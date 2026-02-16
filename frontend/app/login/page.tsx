@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import "../../styles/login.css";
 
 export default function LoginPage() {
@@ -8,6 +9,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,11 +23,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // Appel backend
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch("http://localhost:5000/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password })
       });
 
       const data = await res.json();
@@ -33,9 +34,24 @@ export default function LoginPage() {
       if (!res.ok) {
         setError(data.message || "Erreur lors de la connexion");
       } else {
-        console.log("Login réussi :", data);
-        // TODO : sauvegarder token et rediriger vers dashboard
-        // Exemple : router.push("/dashboard/admin");
+        localStorage.setItem("token", data.token);
+
+        switch (data.user.role) {
+          case "SUPER_ADMIN":
+            router.push("/dashboard/admin");
+            break;
+          case "SCHOOL_ADMIN":
+            router.push("/dashboard/school");
+            break;
+          case "TEACHER":
+            router.push("/dashboard/teacher");
+            break;
+          case "STUDENT":
+            router.push("/dashboard/student");
+            break;
+          default:
+            router.push("/");
+        }
       }
     } catch (err) {
       setError("Erreur serveur, réessayez plus tard.");

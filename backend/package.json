@@ -1,14 +1,15 @@
 {
-  "name": "backend",
+  "name": "kelasipro-backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Kelasipro SaaS Backend API",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "nodemon server.js",
+    "start": "node server.js"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["saas", "education", "multi-tenant"],
+  "author": "JBOY",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
@@ -16,5 +17,8 @@
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.17.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
   }
 }
