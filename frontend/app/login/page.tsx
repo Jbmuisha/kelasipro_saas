@@ -15,8 +15,14 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
 
+    // Vérifie que l'email est Gmail
     if (!email.endsWith("@gmail.com")) {
       setError("Vous devez utiliser une adresse Gmail pour vous connecter.");
+      return;
+    }
+
+    if (!password) {
+      setError("Veuillez entrer votre mot de passe.");
       return;
     }
 
@@ -26,16 +32,21 @@ export default function LoginPage() {
       const res = await fetch("http://localhost:5000/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.message || "Erreur lors de la connexion");
+        // Affiche l'erreur reçue du backend
+        setError(data.message || "Erreur lors de la connexion.");
+        console.log(`[LOGIN FAILED] ${data.message || "Unknown error"}`);
       } else {
+        // Stocke le token dans localStorage
         localStorage.setItem("token", data.token);
+        console.log(`[LOGIN SUCCESS] User logged in: ${email}`);
 
+        // Redirection selon le rôle
         switch (data.user.role) {
           case "SUPER_ADMIN":
             router.push("/dashboard/admin");
@@ -54,6 +65,7 @@ export default function LoginPage() {
         }
       }
     } catch (err) {
+      console.error("[LOGIN ERROR]", err);
       setError("Erreur serveur, réessayez plus tard.");
     } finally {
       setLoading(false);
@@ -78,12 +90,16 @@ export default function LoginPage() {
           onChange={(e) => setPassword(e.target.value)}
           required
         />
-        <button type="submit" disabled={loading}>
-          {loading ? "Connexion..." : "Se connecter"}
+        <button
+          type="submit"
+          disabled={loading}
+          style={{ cursor: loading ? "not-allowed" : "pointer" }}
+        >
+          {loading ? "Connexion en cours..." : "Se connecter"}
         </button>
-        {error && <p style={{ color: "red", textAlign: "center" }}>{error}</p>}
+        {error && <p className="error-message">{error}</p>}
       </form>
-      <p>
+      <p className="forgot-password">
         Mot de passe oublié ? <a href="/forgot-password">Cliquez ici</a>
       </p>
     </div>

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import "../../styles/dashboard.css"; // Crée ce fichier pour ton CSS
+import "@/styles/dashboard.css";
+ 
 import { useRouter } from "next/navigation";
 
 type School = {
