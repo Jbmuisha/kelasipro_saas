@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+
 from flask import Blueprint, request, jsonify
 from db import get_connection
 import bcrypt, jwt, os
@@ -13,7 +13,7 @@ def login():
     password = data.get("password")
 
     if not email or not password:
-        return jsonify({"message": "Email et mot de passe requis"}), 400
+        return jsonify({"message": "Email and password required"}), 400
 
     conn = get_connection()
     with conn.cursor() as cursor:
@@ -22,17 +22,17 @@ def login():
 
     if not user:
         print("[LOGIN FAILED] User not found: {}".format(email))
-        return jsonify({"message": "Utilisateur non trouvé"}), 404
+        return jsonify({"message": "User not found"}), 404
 
     if not bcrypt.checkpw(password.encode(), user["password"].encode()):
         print("[LOGIN FAILED] Incorrect password for user: {}".format(email))
-        return jsonify({"message": "Mot de passe incorrect"}), 401
+        return jsonify({"message": "Incorrect password"}), 401
 
     token = jwt.encode({"id": user["id"], "role": user["role"]}, SECRET, algorithm="HS256")
     print("[LOGIN SUCCESS] User logged in: {}".format(email))
 
     return jsonify({
-        "message": "Connexion réussie",
+        "message": "Login successful",
         "token": token,
         "user": user
     })
