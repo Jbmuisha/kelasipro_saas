@@ -3,6 +3,7 @@ from db import get_connection
 import bcrypt
 import jwt
 import os
+from models import User
 
 users_bp = Blueprint("users", __name__)
 SECRET = os.getenv("JWT_SECRET", "supersecretkey")
@@ -27,17 +28,11 @@ def get_users():
     if not payload or payload.get("role") != "SUPER_ADMIN":
         return jsonify({"message": "Unauthorized"}), 403
 
-    conn = get_connection()
-    with conn.cursor() as cursor:
-        cursor.execute("""
-            SELECT id, name, email, role, created_at, updated_at 
-            FROM users 
-            WHERE role != 'SUPER_ADMIN' 
-            ORDER BY created_at DESC
-        """)
-        users = cursor.fetchall()
-
-    return jsonify({"users": users})
+    try:
+        users = User.get_all(include_super_admin=True)
+        return jsonify({"users": [user.to_dict() for user in users]})
+    except Exception as e:
+        return jsonify({"message": "Error fetching users: " + str(e)}), 500
 
 @users_bp.route("/users", methods=["POST"])
 def create_user():
@@ -59,31 +54,13 @@ def create_user():
     if not name or not email or not password:
         return jsonify({"message": "Name, email and password required"}), 400
 
-    # Validate role
-    valid_roles = ["USER", "ADMIN", "TEACHER", "STUDENT"]
-    if role not in valid_roles:
-        return jsonify({"message": "Invalid role"}), 400
-
-    conn = get_connection()
-    with conn.cursor() as cursor:
-        # Check if user already exists
-        cursor.execute("SELECT * FROM users WHERE email=%s", (email,))
-        existing_user = cursor.fetchone()
-        
-        if existing_user:
-            return jsonify({"message": "User already exists"}), 409
-
-        # Hash password
-        hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-
-        # Insert new user
-        cursor.execute(
-            "INSERT INTO users (name, email, password, role) VALUES (%s, %s, %s, %s)",
-            (name, email, hashed_password, role)
-        )
-        conn.commit()
-
-    return jsonify({"message": "User created successfully"}), 201
+    try:
+        user = User.create(name=name, email=email, password=password, role=role)
+        return jsonify({"message": "User created successfully", "user": user.to_dict()}), 201
+    except ValueError as e:
+        return jsonify({"message": str(e)}), 409
+    except Exception as e:
+        return jsonify({"message": "Error creating user: " + str(e)}), 500
 
 @users_bp.route("/users/<int:user_id>", methods=["PUT"])
 def update_user(user_id):
@@ -105,52 +82,17 @@ def update_user(user_id):
     if not name or not email:
         return jsonify({"message": "Name and email required"}), 400
 
-    # Validate role
-    valid_roles = ["USER", "ADMIN", "TEACHER", "STUDENT"]
-    if role and role not in valid_roles:
-        return jsonify({"message": "Invalid role"}), 400
-
-    conn = get_connection()
-    with conn.cursor() as cursor:
-        # Check if user exists
-        cursor.execute("SELECT * FROM users WHERE id=%s", (user_id,))
-        user = cursor.fetchone()
-        
+    try:
+        user = User.get_by_id(user_id)
         if not user:
             return jsonify({"message": "User not found"}), 404
 
-        # Check if email is already taken by another user
-        cursor.execute("SELECT * FROM users WHERE email=%s AND id!=%s", (email, user_id))
-        existing_user = cursor.fetchone()
-        
-        if existing_user:
-            return jsonify({"message": "Email already taken"}), 409
-
-        # Update user
-        update_fields = []
-        values = []
-        
-        if name:
-            update_fields.append("name=%s")
-            values.append(name)
-        if email:
-            update_fields.append("email=%s")
-            values.append(email)
-        if role:
-            update_fields.append("role=%s")
-            values.append(role)
-        if password:
-            hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-            update_fields.append("password=%s")
-            values.append(hashed_password)
-
-        if update_fields:
-            values.append(user_id)
-            query = "UPDATE users SET " + ", ".join(update_fields) + " WHERE id=%s"
-            cursor.execute(query, values)
-            conn.commit()
-
-    return jsonify({"message": "User updated successfully"})
+        user.update(name=name, email=email, role=role, password=password)
+        return jsonify({"message": "User updated successfully", "user": user.to_dict()})
+    except ValueError as e:
+        return jsonify({"message": str(e)}), 400
+    except Exception as e:
+        return jsonify({"message": "Error updating user: " + str(e)}), 500
 
 @users_bp.route("/users/<int:user_id>", methods=["DELETE"])
 def delete_user(user_id):
@@ -163,24 +105,17 @@ def delete_user(user_id):
     if not payload or payload.get("role") != "SUPER_ADMIN":
         return jsonify({"message": "Unauthorized"}), 403
 
-    conn = get_connection()
-    with conn.cursor() as cursor:
-        # Check if user exists
-        cursor.execute("SELECT * FROM users WHERE id=%s", (user_id,))
-        user = cursor.fetchone()
-        
+    try:
+        user = User.get_by_id(user_id)
         if not user:
             return jsonify({"message": "User not found"}), 404
 
-        # Don't allow deletion of SUPER_ADMIN users
-        if user["role"] == "SUPER_ADMIN":
-            return jsonify({"message": "Cannot delete super admin"}), 400
-
-        # Delete user
-        cursor.execute("DELETE FROM users WHERE id=%s", (user_id,))
-        conn.commit()
-
-    return jsonify({"message": "User deleted successfully"})
+        user.delete()
+        return jsonify({"message": "User deleted successfully"})
+    except ValueError as e:
+        return jsonify({"message": str(e)}), 400
+    except Exception as e:
+        return jsonify({"message": "Error deleting user: " + str(e)}), 500
 
 @users_bp.route("/users/<int:user_id>", methods=["GET"])
 def get_user(user_id):
@@ -193,16 +128,11 @@ def get_user(user_id):
     if not payload or payload.get("role") != "SUPER_ADMIN":
         return jsonify({"message": "Unauthorized"}), 403
 
-    conn = get_connection()
-    with conn.cursor() as cursor:
-        cursor.execute("""
-            SELECT id, name, email, role, created_at, updated_at 
-            FROM users 
-            WHERE id=%s
-        """, (user_id,))
-        user = cursor.fetchone()
+    try:
+        user = User.get_by_id(user_id)
+        if not user:
+            return jsonify({"message": "User not found"}), 404
 
-    if not user:
-        return jsonify({"message": "User not found"}), 404
-
-    return jsonify({"user": user})
+        return jsonify({"user": user.to_dict()})
+    except Exception as e:
+        return jsonify({"message": "Error fetching user: " + str(e)}), 500

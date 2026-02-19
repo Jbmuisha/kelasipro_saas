@@ -73,35 +73,37 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="container">
-      <h1>KelasiPro Login</h1>
-      <form onSubmit={handleLogin}>
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          type="password"
-          placeholder="Mot de passe"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          style={{ cursor: loading ? "not-allowed" : "pointer" }}
-        >
-          {loading ? "Connexion en cours..." : "Se connecter"}
-        </button>
-        {error && <p className="error-message">{error}</p>}
-      </form>
-      <p className="forgot-password">
-        Mot de passe oublié ? <a href="/forgot-password">Cliquez ici</a>
-      </p>
+    <div className="login-page">
+      <div className="container">
+        <h1>KelasiPro Login</h1>
+        <form onSubmit={handleLogin}>
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            type="password"
+            placeholder="Mot de passe"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            style={{ cursor: loading ? "not-allowed" : "pointer" }}
+          >
+            {loading ? "Connexion en cours..." : "Se connecter"}
+          </button>
+          {error && <p className="error-message">{error}</p>}
+        </form>
+        <p className="forgot-password">
+          Mot de passe oublié ? <a href="/forgot-password">Cliquez ici</a>
+        </p>
+      </div>
     </div>
   );
 }

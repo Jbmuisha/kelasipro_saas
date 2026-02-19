@@ -1,388 +1,444 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import "@/styles/dashboard.css";
+import { FaPlus, FaEdit, FaTrash, FaSearch, FaFilter, FaDownload, FaUpload } from "react-icons/fa";
+import "./users.css";
 
-type User = {
-  id: number;
+/* ---------------- Translation System ---------------- */
+
+const translations = {
+  fr: {
+    users: "Utilisateurs",
+    addUser: "Ajouter un utilisateur",
+    editUser: "Modifier l'utilisateur",
+    updateUser: "Mettre à jour l'utilisateur",
+    createUser: "Créer l'utilisateur",
+    name: "Nom",
+    email: "Email",
+    role: "Rôle",
+    school: "École",
+    status: "Statut",
+    createdAt: "Créé le",
+    actions: "Actions",
+    searchUsers: "Rechercher des utilisateurs...",
+    allRoles: "Tous les rôles",
+    allStatus: "Tous les statuts",
+    active: "Actif",
+    inactive: "Inactif",
+    loading: "Chargement",
+    noUsersFound: "Aucun utilisateur trouvé",
+    cancel: "Annuler",
+    profileImage: "Image de profil",
+  },
+  en: {
+    users: "Users",
+    addUser: "Add User",
+    editUser: "Edit User",
+    updateUser: "Update User",
+    createUser: "Create User",
+    name: "Name",
+    email: "Email",
+    role: "Role",
+    school: "School",
+    status: "Status",
+    createdAt: "Created At",
+    actions: "Actions",
+    searchUsers: "Search users...",
+    allRoles: "All Roles",
+    allStatus: "All Status",
+    active: "Active",
+    inactive: "Inactive",
+    loading: "Loading",
+    noUsersFound: "No users found",
+    cancel: "Cancel",
+    profileImage: "Profile Image",
+  },
+};
+
+function useTranslation(language: "fr" | "en") {
+  return translations[language];
+}
+
+interface User {
+  id: string;
   name: string;
   email: string;
   role: string;
-  created_at: string;
-  updated_at: string;
-};
+  school?: string;
+  status: 'active' | 'inactive';
+  createdAt: string;
+}
 
-export default function UsersManagement() {
+export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
-    role: "USER",
-    password: ""
+    role: "teacher",
+    school: "",
+    status: "active" as "active" | "inactive"
   });
-  const [formErrors, setFormErrors] = useState<string[]>([]);
-  
-  const router = useRouter();
+  const [imageFile, setImageFile] = useState<File | null>(null);
+
+  const t = useTranslation("en");
 
   useEffect(() => {
     fetchUsers();
   }, []);
 
   const fetchUsers = async () => {
-    const token = localStorage.getItem("token");
-
-    if (!token) {
-      setError("Vous devez être connecté pour accéder à cette page. Veuillez vous connecter.");
+    setLoading(true);
+    try {
+      const response = await fetch('/api/users');
+      if (!response.ok) {
+        throw new Error('Failed to fetch users');
+      }
+      const data = await response.json();
+      // Transform API response to match frontend User interface
+      const transformedUsers = data.users.map((user: any) => ({
+        id: user.id.toString(),
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        school: user.school || "",
+        status: user.status || "active",
+        createdAt: user.created_at || new Date().toISOString().split('T')[0]
+      }));
+      setUsers(transformedUsers);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      // Fallback to empty array if API fails
+      setUsers([]);
       setLoading(false);
-      return;
-    }
-
-    try {
-      const res = await fetch("http://localhost:5000/api/users", {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.message || "Erreur lors du chargement des utilisateurs.");
-      } else {
-        setUsers(data.users);
-      }
-    } catch (err) {
-      setError("Erreur serveur, réessayez plus tard.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value);
-  };
-
-  const handleRoleFilter = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setRoleFilter(e.target.value);
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const validateForm = (): string[] => {
-    const errors: string[] = [];
-    
-    if (!formData.name.trim()) errors.push("Le nom est requis");
-    if (!formData.email.trim()) errors.push("L'email est requis");
-    else if (!/\S+@\S+\.\S+/.test(formData.email)) errors.push("Email invalide");
-    if (!editingUser && !formData.password) errors.push("Le mot de passe est requis pour la création");
-    
-    return errors;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    const errors = validateForm();
-    if (errors.length > 0) {
-      setFormErrors(errors);
-      return;
-    }
-    
-    setFormErrors([]);
-    const token = localStorage.getItem("token");
-    const url = editingUser 
-      ? `http://localhost:5000/api/users/${editingUser.id}`
-      : "http://localhost:5000/api/users";
-    const method = editingUser ? "PUT" : "POST";
-
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.message || (editingUser ? "Erreur lors de la mise à jour" : "Erreur lors de la création"));
-      } else {
-        setIsModalOpen(false);
-        setEditingUser(null);
-        setFormData({ name: "", email: "", role: "USER", password: "" });
-        fetchUsers();
-      }
-    } catch (err) {
-      setError("Erreur serveur, réessayez plus tard.");
-    }
-  };
-
-  const handleEdit = (user: User) => {
-    setEditingUser(user);
-    setFormData({
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      password: ""
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleDelete = async (userId: number) => {
-    if (!confirm("Êtes-vous sûr de vouloir supprimer cet utilisateur ?")) return;
-
-    const token = localStorage.getItem("token");
-
-    try {
-      const res = await fetch(`http://localhost:5000/api/users/${userId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.message || "Erreur lors de la suppression");
-      } else {
-        fetchUsers();
-      }
-    } catch (err) {
-      setError("Erreur serveur, réessayez plus tard.");
     }
   };
 
   const handleAddUser = () => {
     setEditingUser(null);
-    setFormData({ name: "", email: "", role: "USER", password: "" });
+    setFormData({
+      name: "",
+      email: "",
+      role: "teacher",
+      school: "",
+      status: "active"
+    });
+    setImageFile(null);
     setIsModalOpen(true);
+  };
+
+  const handleEditUser = (user: User) => {
+    setEditingUser(user);
+    setFormData({
+      name: user.name,
+      email: user.email,
+      role: user.role as any,
+      school: user.school || "",
+      status: user.status
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (confirm("Are you sure you want to delete this user?")) {
+      try {
+        const response = await fetch(`/api/users/${userId}`, {
+          method: 'DELETE',
+        });
+        
+        if (response.ok) {
+          setUsers(users.filter(user => user.id !== userId));
+        } else {
+          console.error("Failed to delete user");
+        }
+      } catch (error) {
+        console.error("Error deleting user:", error);
+      }
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingUser) {
+        // Update user via API
+        const response = await fetch(`/api/users/${editingUser.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(formData),
+        });
+        
+        if (response.ok) {
+          const updatedUser = await response.json();
+          setUsers(users.map(user => 
+            user.id === editingUser.id 
+              ? updatedUser
+              : user
+          ));
+        } else {
+          console.error("Failed to update user");
+        }
+      } else {
+        // Add new user via API
+        const response = await fetch('/api/users', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(formData),
+        });
+        
+        if (response.ok) {
+          const newUser = await response.json();
+          setUsers([...users, newUser]);
+        } else {
+          console.error("Failed to create user");
+        }
+      }
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error("Error saving user:", error);
+    }
   };
 
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase());
+                         user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         user.role.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = roleFilter === "all" || user.role === roleFilter;
-    return matchesSearch && matchesRole;
+    const matchesStatus = statusFilter === "all" || user.status === statusFilter;
+    
+    return matchesSearch && matchesRole && matchesStatus;
   });
 
-  const getRoleColor = (role: string) => {
-    switch (role) {
-      case "ADMIN": return "bg-purple-100 text-purple-800";
-      case "TEACHER": return "bg-blue-100 text-blue-800";
-      case "STUDENT": return "bg-green-100 text-green-800";
-      default: return "bg-gray-100 text-gray-800";
+  const exportUsers = () => {
+    const csvContent = [
+      ["Name", "Email", "Role", "School", "Status", "Created At"],
+      ...filteredUsers.map(user => [
+        user.name,
+        user.email,
+        user.role,
+        user.school || "",
+        user.status,
+        user.createdAt
+      ])
+    ].map(row => row.join(",")).join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "users.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setImageFile(e.target.files[0]);
     }
   };
 
   return (
-    <div className="dashboard-container">
-      <div className="flex justify-between items-center mb-6">
-        <h1>Gestion des Utilisateurs</h1>
-        <button 
-          onClick={handleAddUser}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors"
-        >
-          + Ajouter un utilisateur
-        </button>
-      </div>
-
-      {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-          {error}
-        </div>
-      )}
-
-      {/* Filters */}
-      <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <input
-              type="text"
-              placeholder="Rechercher par nom ou email..."
-              value={searchTerm}
-              onChange={handleSearch}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <select
-              value={roleFilter}
-              onChange={handleRoleFilter}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Tous les rôles</option>
-              <option value="USER">Utilisateur</option>
-              <option value="ADMIN">Administrateur</option>
-              <option value="TEACHER">Enseignant</option>
-              <option value="STUDENT">Étudiant</option>
-            </select>
-          </div>
+    <div className="users-page">
+      <div className="page-header">
+        <h1>{t.users}</h1>
+        <div className="header-actions">
+          <button className="btn-export" onClick={exportUsers}>
+            <FaDownload /> Export CSV
+          </button>
+          <button className="btn-add" onClick={handleAddUser}>
+            <FaPlus /> {t.addUser}
+          </button>
         </div>
       </div>
 
-      {loading ? (
-        <div className="text-center py-8">Chargement des utilisateurs...</div>
-      ) : filteredUsers.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          Aucun utilisateur trouvé
+      <div className="filters-section">
+        <div className="search-box">
+          <FaSearch />
+          <input
+            type="text"
+            placeholder={t.searchUsers}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
-      ) : (
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nom</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rôle</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date de création</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{user.name}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-500">{user.email}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getRoleColor(user.role)}`}>
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(user.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                      <button
-                        onClick={() => handleEdit(user)}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        Modifier
-                      </button>
-                      <button
-                        onClick={() => handleDelete(user.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Supprimer
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        
+        <div className="filters">
+          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+            <option value="all">{t.allRoles}</option>
+            <option value="admin">Admin</option>
+            <option value="teacher">Teacher</option>
+            <option value="student">Student</option>
+          </select>
+          
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="all">{t.allStatus}</option>
+            <option value="active">{t.active}</option>
+            <option value="inactive">{t.inactive}</option>
+          </select>
         </div>
-      )}
+      </div>
 
-      {/* Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-md w-full">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold mb-4">
-                {editingUser ? "Modifier l'utilisateur" : "Ajouter un utilisateur"}
-              </h3>
-              
-              {formErrors.length > 0 && (
-                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                  <ul className="list-disc list-inside">
-                    {formErrors.map((error, index) => (
-                      <li key={index}>{error}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <form onSubmit={handleSubmit}>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Nom</label>
-                    <input
-                      type="text"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleInputChange}
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Email</label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Rôle</label>
-                    <select
-                      name="role"
-                      value={formData.role}
-                      onChange={handleInputChange}
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+      <div className="users-table-container">
+        <table className="users-table">
+          <thead>
+            <tr>
+              <th>{t.name}</th>
+              <th>{t.email}</th>
+              <th>{t.role}</th>
+              <th>{t.school}</th>
+              <th>{t.status}</th>
+              <th>{t.createdAt}</th>
+              <th>{t.actions}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={7} className="loading">
+                  {t.loading}...
+                </td>
+              </tr>
+            ) : filteredUsers.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="no-data">
+                  {t.noUsersFound}
+                </td>
+              </tr>
+            ) : (
+              filteredUsers.map(user => (
+                <tr key={user.id}>
+                  <td>{user.name}</td>
+                  <td>{user.email}</td>
+                  <td>
+                    <span className={`role-badge ${user.role}`}>
+                      {user.role}
+                    </span>
+                  </td>
+                  <td>{user.school || "-"}</td>
+                  <td>
+                    <span className={`status-badge ${user.status}`}>
+                      {user.status}
+                    </span>
+                  </td>
+                  <td>{user.createdAt}</td>
+                  <td className="actions">
+                    <button
+                      className="btn-edit"
+                      onClick={() => handleEditUser(user)}
                     >
-                      <option value="USER">Utilisateur</option>
-                      <option value="ADMIN">Administrateur</option>
-                      <option value="TEACHER">Enseignant</option>
-                      <option value="STUDENT">Étudiant</option>
-                    </select>
-                  </div>
-                  
-                  {!editingUser && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Mot de passe</label>
-                      <input
-                        type="password"
-                        name="password"
-                        value={formData.password}
-                        onChange={handleInputChange}
-                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                      />
-                    </div>
-                  )}
-                </div>
-                
-                <div className="mt-6 flex justify-end space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                  >
-                    {editingUser ? "Mettre à jour" : "Créer"}
-                  </button>
-                </div>
-              </form>
+                      <FaEdit />
+                    </button>
+                    <button
+                      className="btn-delete"
+                      onClick={() => handleDeleteUser(user.id)}
+                    >
+                      <FaTrash />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Add/Edit User Modal */}
+      {isModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{editingUser ? t.editUser : t.addUser}</h2>
+              <button className="modal-close" onClick={() => setIsModalOpen(false)}>
+                ×
+              </button>
             </div>
+            
+            <form onSubmit={handleSubmit} className="user-form">
+              <div className="form-group">
+                <label>{t.name}</label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  required
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>{t.email}</label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  required
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>{t.role}</label>
+                <select
+                  value={formData.role}
+                  onChange={(e) => setFormData({...formData, role: e.target.value as any})}
+                  required
+                >
+                  <option value="admin">Admin</option>
+                  <option value="teacher">Teacher</option>
+                  <option value="student">Student</option>
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <label>{t.school}</label>
+                <input
+                  type="text"
+                  value={formData.school}
+                  onChange={(e) => setFormData({...formData, school: e.target.value})}
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>{t.status}</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({...formData, status: e.target.value as any})}
+                >
+                  <option value="active">{t.active}</option>
+                  <option value="inactive">{t.inactive}</option>
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <label>{t.profileImage}</label>
+                <div className="image-upload">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                  />
+                  <span className="upload-icon">
+                    <FaUpload />
+                  </span>
+                </div>
+              </div>
+              
+              <div className="form-actions">
+                <button type="button" className="btn-cancel" onClick={() => setIsModalOpen(false)}>
+                  {t.cancel}
+                </button>
+                <button type="submit" className="btn-save">
+                  {editingUser ? t.updateUser : t.createUser}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
