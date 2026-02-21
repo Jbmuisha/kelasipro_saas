@@ -10,11 +10,11 @@ def test_users_api():
     # Test 1: Try to get users without token (should fail)
     print("\n1. Testing GET /users without token:")
     try:
-        response = requests.get(f"{BASE_URL}/users")
-        print(f"Status: {response.status_code}")
-        print(f"Response: {response.json()}")
+        response = requests.get(BASE_URL + "/users")
+        print("Status: {}".format(response.status_code))
+        print("Response: {}".format(response.json()))
     except Exception as e:
-        print(f"Error: {e}")
+        print("Error: {}".format(e))
     
     # Test 2: Try to login to get a token
     print("\n2. Testing login to get token:")
@@ -23,24 +23,24 @@ def test_users_api():
             "email": "jbmuisha@gmail.com",
             "password": "jbGolden2912#"
         }
-        response = requests.post(f"{BASE_URL}/auth/login", json=login_data)
-        print(f"Login Status: {response.status_code}")
+        response = requests.post(BASE_URL + "/auth/login", json=login_data)
+        print("Login Status: {}".format(response.status_code))
         if response.status_code == 200:
             data = response.json()
             token = data.get("token")
-            print(f"Token received: {token[:20]}..." if token else "No token")
+            print("Token received: {}...".format(token[:20]) if token else "No token")
             
             # Test 3: Try to get users with valid token
-            print("\n3. Testing GET /users with valid token:")
-            headers = {"Authorization": f"Bearer {token}"}
-            response = requests.get(f"{BASE_URL}/users", headers=headers)
-            print(f"Status: {response.status_code}")
-            print(f"Response: {response.json()}")
+            print("\n3. Testing GET /users/users with valid token:")
+            headers = {"Authorization": "Bearer {}".format(token)}
+            response = requests.get(BASE_URL + "/users/users", headers=headers)
+            print("Status: {}".format(response.status_code))
+            print("Response: {}".format(response.json()))
             
         else:
-            print(f"Login failed: {response.json()}")
+            print("Login failed: {}".format(response.json()))
     except Exception as e:
-        print(f"Login error: {e}")
+        print("Login error: {}".format(e))
 
 if __name__ == "__main__":
     test_users_api()

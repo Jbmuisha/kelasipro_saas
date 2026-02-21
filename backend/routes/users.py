@@ -51,8 +51,8 @@ def create_user():
     password = data.get("password")
     role = data.get("role", "USER")
 
-    if not name or not email or not password:
-        return jsonify({"message": "Name, email and password required"}), 400
+    if not name or not email:
+        return jsonify({"message": "Name and email required"}), 400
 
     try:
         user = User.create(name=name, email=email, password=password, role=role)

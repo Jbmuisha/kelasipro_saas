@@ -5,7 +5,9 @@ class User:
     def __init__(self, id, name, email, role, 
                  created_at=None, 
                  updated_at=None,
-                 school_id=None):
+                 school_id=None,
+                 status=None,
+                 profile_image=None):
         self.id = id
         self.name = name
         self.email = email
@@ -13,19 +15,27 @@ class User:
         self.created_at = created_at
         self.updated_at = updated_at
         self.school_id = school_id
+        self.status = status
+        self.profile_image = profile_image
 
     @classmethod
     def from_dict(cls, data):
         """Create User instance from database row"""
-        return cls(
+        user = cls(
             id=data['id'],
             name=data['name'],
             email=data['email'],
             role=data['role'],
             created_at=data.get('created_at'),
             updated_at=data.get('updated_at'),
-            school_id=data.get('school_id')
+            school_id=data.get('school_id'),
+            status=data.get('status'),
+            profile_image=data.get('profile_image')
         )
+        # Add password attribute if it exists in the data
+        if 'password' in data:
+            user.password = data['password']
+        return user
 
     def to_dict(self):
         """Convert User instance to dictionary for API response"""
@@ -36,7 +46,10 @@ class User:
             'role': self.role,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            'school_id': self.school_id
+            'school_id': self.school_id,
+            'status': self.status,
+            'profile_image': self.profile_image,
+            'password': self.password.decode() if hasattr(self, 'password') and isinstance(self.password, bytes) else (self.password if hasattr(self, 'password') else '...')
         }
 
     @classmethod
@@ -46,13 +59,13 @@ class User:
         with conn.cursor() as cursor:
             if include_super_admin:
                 cursor.execute("""
-                    SELECT id, name, email, role, created_at, updated_at, school_id
+                    SELECT id, name, email, role, created_at, school_id, password, status, profile_image
                     FROM users 
                     ORDER BY created_at DESC
                 """)
             else:
                 cursor.execute("""
-                    SELECT id, name, email, role, created_at, updated_at, school_id
+                    SELECT id, name, email, role, created_at, school_id, password, status, profile_image
                     FROM users 
                     WHERE role != 'SUPER_ADMIN'
                     ORDER BY created_at DESC
@@ -67,7 +80,7 @@ class User:
         conn = get_connection()
         with conn.cursor() as cursor:
             cursor.execute("""
-                SELECT id, name, email, role, created_at, updated_at, school_id
+                SELECT id, name, email, role, created_at, school_id, password, status, profile_image
                 FROM users 
                 WHERE id = %s
             """, (user_id,))
@@ -96,8 +109,12 @@ class User:
             if existing_user:
                 raise ValueError("User already exists")
 
-            # Hash password
-            hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+            # Hash password if provided, otherwise use a default
+            if password:
+                hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+            else:
+                # Use a default password if none provided
+                hashed_password = bcrypt.hashpw("default123".encode(), bcrypt.gensalt())
 
             # Insert new user
             cursor.execute(
@@ -170,7 +187,6 @@ class User:
                     self.email = updated_user.email
                     self.role = updated_user.role
                     self.school_id = updated_user.school_id
-                    self.updated_at = updated_user.updated_at
 
             return True
 

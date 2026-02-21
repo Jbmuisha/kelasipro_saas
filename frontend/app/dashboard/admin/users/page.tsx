@@ -67,6 +67,7 @@ interface User {
   school?: string;
   status: 'active' | 'inactive';
   createdAt: string;
+  password?: string;
 }
 
 export default function UsersPage() {
@@ -82,7 +83,9 @@ export default function UsersPage() {
     email: "",
     role: "teacher",
     school: "",
-    status: "active" as "active" | "inactive"
+    status: "active" as "active" | "inactive",
+    password: "",
+    profile_image: ""
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
 
@@ -95,22 +98,45 @@ export default function UsersPage() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/users');
+      const token = localStorage.getItem("token");
+      console.log("Fetching users with token:", token ? "Token present" : "No token");
+      const response = await fetch('http://localhost:5000/api/users/users', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      console.log("Response status:", response.status);
+      console.log("Response ok:", response.ok);
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch users');
+        const errorText = await response.text();
+        console.error("Response error text:", errorText);
+        throw new Error(`Failed to fetch users: ${response.status} - ${errorText}`);
       }
+      
       const data = await response.json();
+      console.log("Response data:", data);
+      
+      // Check if data has the expected structure
+      if (!data || !data.users || !Array.isArray(data.users)) {
+        console.error("Invalid API response structure:", data);
+        throw new Error("Invalid API response structure");
+      }
+      
       // Transform API response to match frontend User interface
       const transformedUsers = data.users.map((user: any) => ({
-        id: user.id.toString(),
-        name: user.name,
-        email: user.email,
-        role: user.role,
+        id: user.id ? user.id.toString() : "",
+        name: user.name || "",
+        email: user.email || "",
+        role: user.role || "",
         school: user.school || "",
         status: user.status || "active",
-        createdAt: user.created_at || new Date().toISOString().split('T')[0]
+        createdAt: user.created_at ? new Date(user.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
+        password: user.password || ""
       }));
+      console.log("Transformed users:", transformedUsers);
       setUsers(transformedUsers);
+      setLoading(false);
     } catch (error) {
       console.error("Error fetching users:", error);
       // Fallback to empty array if API fails
@@ -126,7 +152,9 @@ export default function UsersPage() {
       email: "",
       role: "teacher",
       school: "",
-      status: "active"
+      status: "active",
+      password: "",
+      profile_image: ""
     });
     setImageFile(null);
     setIsModalOpen(true);
@@ -139,16 +167,54 @@ export default function UsersPage() {
       email: user.email,
       role: user.role as any,
       school: user.school || "",
-      status: user.status
+      status: user.status,
+      password: user.password || "",
+      profile_image: ""
     });
     setIsModalOpen(true);
+  };
+
+
+  const handleChangePassword = async (userId: string, newPassword: string) => {
+    if (!newPassword) {
+      alert("Please enter a new password");
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`http://localhost:5000/api/users/users/${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ password: newPassword })
+      });
+      
+      if (response.ok) {
+        alert("Password updated successfully");
+        // Refresh the users list
+        fetchUsers();
+      } else {
+        console.error("Failed to update password");
+        alert("Failed to update password");
+      }
+    } catch (error) {
+      console.error("Error updating password:", error);
+      alert("Error updating password");
+    }
   };
 
   const handleDeleteUser = async (userId: string) => {
     if (confirm("Are you sure you want to delete this user?")) {
       try {
-        const response = await fetch(`/api/users/${userId}`, {
+        const token = localStorage.getItem("token");
+        const response = await fetch(`http://localhost:5000/api/users/users/${userId}`, {
           method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
         });
         
         if (response.ok) {
@@ -167,10 +233,12 @@ export default function UsersPage() {
     try {
       if (editingUser) {
         // Update user via API
-        const response = await fetch(`/api/users/${editingUser.id}`, {
+        const token = localStorage.getItem("token");
+        const response = await fetch(`http://localhost:5000/api/users/users/${editingUser.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify(formData),
         });
@@ -184,13 +252,17 @@ export default function UsersPage() {
           ));
         } else {
           console.error("Failed to update user");
+          const errorText = await response.text();
+          console.error("Error response:", errorText);
         }
       } else {
-        // Add new user via API
-        const response = await fetch('/api/users', {
+        
+        const token = localStorage.getItem("token");
+        const response = await fetch('http://localhost:5000/api/users/users', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify(formData),
         });
@@ -200,6 +272,8 @@ export default function UsersPage() {
           setUsers([...users, newUser]);
         } else {
           console.error("Failed to create user");
+          const errorText = await response.text();
+          console.error("Error response:", errorText);
         }
       }
       setIsModalOpen(false);
@@ -295,6 +369,7 @@ export default function UsersPage() {
               <th>{t.email}</th>
               <th>{t.role}</th>
               <th>{t.school}</th>
+              <th>Password</th>
               <th>{t.status}</th>
               <th>{t.createdAt}</th>
               <th>{t.actions}</th>
@@ -324,6 +399,25 @@ export default function UsersPage() {
                     </span>
                   </td>
                   <td>{user.school || "-"}</td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                        {user.password ? '••••••••' : 'No password'}
+                      </span>
+                      <button
+                        className="btn-edit"
+                        onClick={() => {
+                          const newPassword = prompt('Enter new password:', '');
+                          if (newPassword !== null) {
+                            handleChangePassword(user.id, newPassword);
+                          }
+                        }}
+                        style={{ padding: '2px 6px', fontSize: '10px' }}
+                      >
+                        Change
+                      </button>
+                    </div>
+                  </td>
                   <td>
                     <span className={`status-badge ${user.status}`}>
                       {user.status}
@@ -388,7 +482,6 @@ export default function UsersPage() {
                 <select
                   value={formData.role}
                   onChange={(e) => setFormData({...formData, role: e.target.value as any})}
-                  required
                 >
                   <option value="admin">Admin</option>
                   <option value="teacher">Teacher</option>
@@ -402,6 +495,16 @@ export default function UsersPage() {
                   type="text"
                   value={formData.school}
                   onChange={(e) => setFormData({...formData, school: e.target.value})}
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Password</label>
+                <input
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  placeholder="Leave empty to keep current password"
                 />
               </div>
               
