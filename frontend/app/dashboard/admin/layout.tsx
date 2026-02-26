@@ -132,7 +132,7 @@ export default function SuperAdminLayout({
   const menu = [
     { name: t.dashboard, href: "/dashboard/superadmin", icon: <FaTachometerAlt /> },
     { name: t.users, href: "/dashboard/admin/users", icon: <FaUsers /> },
-    { name: t.schools, href: "/dashboard/superadmin/schools", icon: <FaSchool /> },
+    { name: t.schools, href: "/dashboard/admin/school", icon: <FaSchool /> },
     { name: t.admins, href: "/dashboard/superadmin/admins", icon: <FaUserTie /> },
     { name: t.teachers, href: "/dashboard/superadmin/teachers", icon: <FaUsers /> },
     { name: t.students, href: "/dashboard/superadmin/students", icon: <FaUserGraduate /> },

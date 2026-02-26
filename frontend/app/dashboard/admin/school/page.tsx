@@ -14,16 +14,6 @@ type School = {
   created_at?: string;
 };
 
-type User = {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  school_id?: string;
-  status?: string;
-  profile_image?: string;
-};
-
 // Simple toast notification component
 const Toast = ({ message, type, onClose }: { message: string; type: string; onClose: () => void }) => (
   <div className={`toast toast-${type}`}>
@@ -32,7 +22,7 @@ const Toast = ({ message, type, onClose }: { message: string; type: string; onCl
   </div>
 );
 
-export default function SchoolDashboard() {
+export default function AdminSchoolsPage() {
   const [schools, setSchools] = useState<School[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -46,7 +36,6 @@ export default function SchoolDashboard() {
   });
   const [editingSchool, setEditingSchool] = useState<School | null>(null);
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
-  const [activeTab, setActiveTab] = useState("schools");
 
   // ================= SHOW TOAST =================
   const showToast = (message: string, type: string = "success") => {
@@ -59,7 +48,7 @@ export default function SchoolDashboard() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`${API_URL}/api/schools`);
+      const response = await fetch(`${API_URL}/api/schools/`);
       if (!response.ok) {
         throw new Error("Failed to fetch schools");
       }
@@ -111,7 +100,7 @@ export default function SchoolDashboard() {
   const handleUpdateSchool = async () => {
     if (!editingSchool) return;
     try {
-      const response = await fetch(`${API_URL}/api/schools/${editingSchool.id}`, {
+      const response = await fetch(`${API_URL}/api/schools/${editingSchool.id}/`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editingSchool),
@@ -178,136 +167,61 @@ export default function SchoolDashboard() {
         </div>
       </div>
 
-      {/* TAB NAVIGATION */}
-      <div className="tab-navigation">
-        <button 
-          className={`tab-btn ${activeTab === 'schools' ? 'active' : ''}`}
-          onClick={() => setActiveTab('schools')}
-        >
-          Schools
-        </button>
-        <button 
-          className={`tab-btn ${activeTab === 'teachers' ? 'active' : ''}`}
-          onClick={() => setActiveTab('teachers')}
-        >
-          Teachers
-        </button>
-        <button 
-          className={`tab-btn ${activeTab === 'students' ? 'active' : ''}`}
-          onClick={() => setActiveTab('students')}
-        >
-          Students
-        </button>
-      </div>
-
       {/* ERROR */}
       {error && <p className="no-data">{error}</p>}
 
-      {/* SCHOOLS TAB */}
-      {activeTab === 'schools' && (
-        <>
-          {/* LOADING */}
-          {loading && <p className="loading">Loading schools...</p>}
+      {/* LOADING */}
+      {loading && <p className="loading">Loading schools...</p>}
 
-          {/* SCHOOLS TABLE */}
-          {!loading && schools.length > 0 && (
-            <div className="dashboard-content">
-              <div className="table-container">
-                <table className="dashboard-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Email</th>
-                      <th>Phone</th>
-                      <th>Created</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {schools.map((school) => (
-                      <tr key={school.id}>
-                        <td>
-                          <strong>{school.name}</strong>
-                        </td>
-                        <td>{school.email || "-"}</td>
-                        <td>{school.phone || "-"}</td>
-                        <td>{school.created_at ? new Date(school.created_at).toLocaleDateString() : "-"}</td>
-                        <td>
-                          <div className="actions">
-                            <button
-                              className="btn-edit"
-                              onClick={() => openEditModal(school)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              className="btn-delete"
-                              onClick={() => handleDeleteSchool(school.id)}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {!loading && schools.length === 0 && (
-            <p className="no-data">No schools found.</p>
-          )}
-        </>
-      )}
-
-      {/* TEACHERS TAB */}
-      {activeTab === 'teachers' && (
+      {/* SCHOOLS TABLE */}
+      {!loading && schools.length > 0 && (
         <div className="dashboard-content">
-          <div className="tab-content">
-            <h2>Teachers Management</h2>
-            <p>Coming soon - Teacher management functionality will be implemented here.</p>
-            <div className="feature-preview">
-              <div className="feature-card">
-                <h3>View Teachers</h3>
-                <p>See all teachers assigned to schools</p>
-              </div>
-              <div className="feature-card">
-                <h3>Assign to School</h3>
-                <p>Assign teachers to specific schools</p>
-              </div>
-              <div className="feature-card">
-                <h3>Manage Classes</h3>
-                <p>Manage teacher class assignments</p>
-              </div>
-            </div>
+          <div className="table-container">
+            <table className="dashboard-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {schools.map((school) => (
+                  <tr key={school.id}>
+                    <td>
+                      <strong>{school.name}</strong>
+                    </td>
+                    <td>{school.email || "-"}</td>
+                    <td>{school.phone || "-"}</td>
+                    <td>{school.created_at ? new Date(school.created_at).toLocaleDateString() : "-"}</td>
+                    <td>
+                      <div className="actions">
+                        <button
+                          className="btn-edit"
+                          onClick={() => openEditModal(school)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn-delete"
+                          onClick={() => handleDeleteSchool(school.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
-      {/* STUDENTS TAB */}
-      {activeTab === 'students' && (
-        <div className="dashboard-content">
-          <div className="tab-content">
-            <h2>Students Management</h2>
-            <p>Coming soon - Student management functionality will be implemented here.</p>
-            <div className="feature-preview">
-              <div className="feature-card">
-                <h3>View Students</h3>
-                <p>See all students enrolled in schools</p>
-              </div>
-              <div className="feature-card">
-                <h3>Enroll to School</h3>
-                <p>Enroll students to specific schools</p>
-              </div>
-              <div className="feature-card">
-                <h3>Class Management</h3>
-                <p>Manage student class assignments</p>
-              </div>
-            </div>
-          </div>
-        </div>
+      {!loading && schools.length === 0 && (
+        <p className="no-data">No schools found.</p>
       )}
 
       {/* TOAST NOTIFICATION */}

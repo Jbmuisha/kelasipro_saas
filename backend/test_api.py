@@ -1,13 +1,13 @@
 import requests
 import json
 
-# Test the users API endpoints
+
 BASE_URL = "http://localhost:5000/api"
 
 def test_users_api():
     print("Testing Users API...")
     
-    # Test 1: Try to get users without token (should fail)
+    
     print("\n1. Testing GET /users without token:")
     try:
         response = requests.get(BASE_URL + "/users")
@@ -16,7 +16,7 @@ def test_users_api():
     except Exception as e:
         print("Error: {}".format(e))
     
-    # Test 2: Try to login to get a token
+ 
     print("\n2. Testing login to get token:")
     try:
         login_data = {
@@ -30,7 +30,7 @@ def test_users_api():
             token = data.get("token")
             print("Token received: {}...".format(token[:20]) if token else "No token")
             
-            # Test 3: Try to get users with valid token
+           
             print("\n3. Testing GET /users/users with valid token:")
             headers = {"Authorization": "Bearer {}".format(token)}
             response = requests.get(BASE_URL + "/users/users", headers=headers)

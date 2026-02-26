@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # Backend Flask API
+  backend:
+    build:
+      context: .
+      target: backend-builder
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+      - ./uploads:/app/uploads
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - DATABASE_URL=sqlite:///app.db
+    command: python -m flask run --host=0.0.0.0 --port=5000
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  # Frontend Next.js App
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:5000
+    command: npm run dev
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Database
+  db:
+    image: sqlite3:latest
+    volumes:
+      - db_data:/app
+    command: sqlite3 /app/app.db "VACUUM;"
+    restart: unless-stopped
+
+  # Production build (optional)
+  kelasipro-app:
+    build: .
+    ports:
+      - "8000:3000"
+    volumes:
+      - ./uploads:/app/uploads
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=sqlite:///app.db
+    restart: unless-stopped
+
+volumes:
+  db_data:

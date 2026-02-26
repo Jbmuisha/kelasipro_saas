@@ -1,138 +1,92 @@
-from flask import Blueprint, request, jsonify
-from db import get_connection
-import bcrypt
-import jwt
-import os
+from flask import Blueprint, jsonify, request
 from models import User
 
-users_bp = Blueprint("users", __name__)
-SECRET = os.getenv("JWT_SECRET", "supersecretkey")
+users_bp = Blueprint('users', __name__)
 
-def verify_token(token):
-    try:
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-        return payload
-    except jwt.ExpiredSignatureError:
-        return None
-    except jwt.InvalidTokenError:
-        return None
-
-@users_bp.route("/users", methods=["GET"])
+# ================= GET ALL USERS =================
+@users_bp.route("/", methods=["GET"])
 def get_users():
-    token = request.headers.get("Authorization")
-    if not token:
-        return jsonify({"message": "Token required"}), 401
-    
-    token = token.replace("Bearer ", "")
-    payload = verify_token(token)
-    if not payload or payload.get("role") != "SUPER_ADMIN":
-        return jsonify({"message": "Unauthorized"}), 403
-
     try:
-        users = User.get_all(include_super_admin=True)
-        return jsonify({"users": [user.to_dict() for user in users]})
+        users = User.get_all()  # Returns list of User instances
+        print(f"[DEBUG] Fetched {len(users)} users")  # Debug
+        users_json = [user.to_dict() for user in users]
+        return jsonify({"users": users_json})
     except Exception as e:
-        return jsonify({"message": "Error fetching users: " + str(e)}), 500
+        print(f"[ERROR] get_users: {str(e)}")
+        return jsonify({"error": str(e), "users": []}), 500
 
-@users_bp.route("/users", methods=["POST"])
+# ================= GET USER BY ID =================
+@users_bp.route("/<int:user_id>", methods=["GET"])
+def get_user(user_id):
+    try:
+        user = User.get_by_id(user_id)
+        if user:
+            return jsonify(user.to_dict())
+        return jsonify({"error": "User not found"}), 404
+    except Exception as e:
+        print(f"[ERROR] get_user: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+# ================= CREATE USER =================
+@users_bp.route("/", methods=["POST"])
 def create_user():
-    token = request.headers.get("Authorization")
-    if not token:
-        return jsonify({"message": "Token required"}), 401
-    
-    token = token.replace("Bearer ", "")
-    payload = verify_token(token)
-    if not payload or payload.get("role") != "SUPER_ADMIN":
-        return jsonify({"message": "Unauthorized"}), 403
-
-    data = request.get_json()
-    name = data.get("name")
-    email = data.get("email")
-    password = data.get("password")
-    role = data.get("role", "USER")
-
-    if not name or not email:
-        return jsonify({"message": "Name and email required"}), 400
-
+    data = request.json
     try:
-        user = User.create(name=name, email=email, password=password, role=role)
-        return jsonify({"message": "User created successfully", "user": user.to_dict()}), 201
-    except ValueError as e:
-        return jsonify({"message": str(e)}), 409
+        user = User.create(
+            name=data.get("name"),
+            email=data.get("email"),
+            password=data.get("password"),
+            role=data.get("role", "TEACHER"),
+            school_id=data.get("school_id")
+        )
+        
+        # Handle profile image if provided
+        if "profile_image" in data and data["profile_image"]:
+            user.update(profile_image=data["profile_image"])
+            # Fetch the updated user to include the profile_image
+            user = User.get_by_id(user.id)
+        
+        print(f"[DEBUG] Created user: {user.to_dict()}")
+        return jsonify(user.to_dict())
     except Exception as e:
-        return jsonify({"message": "Error creating user: " + str(e)}), 500
+        print(f"[ERROR] create_user: {str(e)}")
+        return jsonify({"error": str(e)}), 400
 
-@users_bp.route("/users/<int:user_id>", methods=["PUT"])
+# ================= UPDATE USER =================
+@users_bp.route("/<int:user_id>", methods=["PUT"])
 def update_user(user_id):
-    token = request.headers.get("Authorization")
-    if not token:
-        return jsonify({"message": "Token required"}), 401
-    
-    token = token.replace("Bearer ", "")
-    payload = verify_token(token)
-    if not payload or payload.get("role") != "SUPER_ADMIN":
-        return jsonify({"message": "Unauthorized"}), 403
-
-    data = request.get_json()
-    name = data.get("name")
-    email = data.get("email")
-    role = data.get("role")
-    password = data.get("password")
-
-    if not name or not email:
-        return jsonify({"message": "Name and email required"}), 400
-
+    data = request.json
     try:
         user = User.get_by_id(user_id)
         if not user:
-            return jsonify({"message": "User not found"}), 404
+            return jsonify({"error": "User not found"}), 404
 
-        user.update(name=name, email=email, role=role, password=password)
-        return jsonify({"message": "User updated successfully", "user": user.to_dict()})
-    except ValueError as e:
-        return jsonify({"message": str(e)}), 400
+        user.update(
+            name=data.get("name"),
+            email=data.get("email"),
+            role=data.get("role"),
+            password=data.get("password"),
+            school_id=data.get("school_id"),
+            profile_image=data.get("profile_image")
+        )
+        updated = User.get_by_id(user_id)
+        print(f"[DEBUG] Updated user: {updated.to_dict()}")
+        return jsonify(updated.to_dict())
     except Exception as e:
-        return jsonify({"message": "Error updating user: " + str(e)}), 500
+        print(f"[ERROR] update_user: {str(e)}")
+        return jsonify({"error": str(e)}), 400
 
-@users_bp.route("/users/<int:user_id>", methods=["DELETE"])
+# ================= DELETE USER =================
+@users_bp.route("/<int:user_id>", methods=["DELETE"])
 def delete_user(user_id):
-    token = request.headers.get("Authorization")
-    if not token:
-        return jsonify({"message": "Token required"}), 401
-    
-    token = token.replace("Bearer ", "")
-    payload = verify_token(token)
-    if not payload or payload.get("role") != "SUPER_ADMIN":
-        return jsonify({"message": "Unauthorized"}), 403
-
     try:
         user = User.get_by_id(user_id)
         if not user:
-            return jsonify({"message": "User not found"}), 404
+            return jsonify({"error": "User not found"}), 404
 
         user.delete()
+        print(f"[DEBUG] Deleted user ID: {user_id}")
         return jsonify({"message": "User deleted successfully"})
-    except ValueError as e:
-        return jsonify({"message": str(e)}), 400
     except Exception as e:
-        return jsonify({"message": "Error deleting user: " + str(e)}), 500
-
-@users_bp.route("/users/<int:user_id>", methods=["GET"])
-def get_user(user_id):
-    token = request.headers.get("Authorization")
-    if not token:
-        return jsonify({"message": "Token required"}), 401
-    
-    token = token.replace("Bearer ", "")
-    payload = verify_token(token)
-    if not payload or payload.get("role") != "SUPER_ADMIN":
-        return jsonify({"message": "Unauthorized"}), 403
-
-    try:
-        user = User.get_by_id(user_id)
-        if not user:
-            return jsonify({"message": "User not found"}), 404
-
-        return jsonify({"user": user.to_dict()})
-    except Exception as e:
-        return jsonify({"message": "Error fetching user: " + str(e)}), 500
+        print(f"[ERROR] delete_user: {str(e)}")
+        return jsonify({"error": str(e)}), 400

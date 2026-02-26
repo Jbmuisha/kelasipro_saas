@@ -1,396 +1,278 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { FaPlus, FaEdit, FaTrash, FaSearch, FaFilter, FaDownload, FaUpload } from "react-icons/fa";
+import { useEffect, useState } from "react";
 import "./users.css";
 
-/* ---------------- Translation System ---------------- */
+// Simple toast notification component
+const Toast = ({ message, type, onClose }: { message: string; type: string; onClose: () => void }) => (
+  <div className={`toast toast-${type}`}>
+    <span>{message}</span>
+    <button className="toast-close" onClick={onClose}>×</button>
+  </div>
+);
 
-const translations = {
-  fr: {
-    users: "Utilisateurs",
-    addUser: "Ajouter un utilisateur",
-    editUser: "Modifier l'utilisateur",
-    updateUser: "Mettre à jour l'utilisateur",
-    createUser: "Créer l'utilisateur",
-    name: "Nom",
-    email: "Email",
-    role: "Rôle",
-    school: "École",
-    status: "Statut",
-    createdAt: "Créé le",
-    actions: "Actions",
-    searchUsers: "Rechercher des utilisateurs...",
-    allRoles: "Tous les rôles",
-    allStatus: "Tous les statuts",
-    active: "Actif",
-    inactive: "Inactif",
-    loading: "Chargement",
-    noUsersFound: "Aucun utilisateur trouvé",
-    cancel: "Annuler",
-    profileImage: "Image de profil",
-  },
-  en: {
-    users: "Users",
-    addUser: "Add User",
-    editUser: "Edit User",
-    updateUser: "Update User",
-    createUser: "Create User",
-    name: "Name",
-    email: "Email",
-    role: "Role",
-    school: "School",
-    status: "Status",
-    createdAt: "Created At",
-    actions: "Actions",
-    searchUsers: "Search users...",
-    allRoles: "All Roles",
-    allStatus: "All Status",
-    active: "Active",
-    inactive: "Inactive",
-    loading: "Loading",
-    noUsersFound: "No users found",
-    cancel: "Cancel",
-    profileImage: "Profile Image",
-  },
-};
+const API_URL = "http://localhost:5000";
 
-function useTranslation(language: "fr" | "en") {
-  return translations[language];
-}
-
-interface User {
+type User = {
   id: string;
   name: string;
   email: string;
   role: string;
   school?: string;
-  status: 'active' | 'inactive';
-  createdAt: string;
+  status?: string;
+  createdAt?: string;
   password?: string;
-}
+  profile_image?: string;
+};
 
-export default function UsersPage() {
+type School = {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+};
+
+export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [formData, setFormData] = useState({
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [showModal, setShowModal] = useState(false);
+  const [formData, setFormData] = useState<User>({
+    id: "",
     name: "",
     email: "",
-    role: "teacher",
-    school: "",
-    status: "active" as "active" | "inactive",
+    role: "TEACHER",
     password: "",
-    profile_image: ""
+    school: "",
+    status: "active",
+    profile_image: "",
   });
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [schools, setSchools] = useState<School[]>([]);
+  const [toast, setToast] = useState({ show: false, message: "", type: "success" });
 
-  const t = useTranslation("en");
+  // ================= SHOW TOAST =================
+  const showToast = (message: string, type: string = "success") => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: "", type: "success" }), 3000);
+  };
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
+  // ================= FETCH SCHOOLS =================
+  const fetchSchools = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/schools`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch schools");
+      }
+      const data = await response.json();
+      setSchools(data.schools || []);
+    } catch (err) {
+      console.error("Fetch schools error:", err);
+      setSchools([]);
+    }
+  };
 
+  // ================= RESET FORM =================
+  const resetForm = () => {
+    setFormData({
+      id: "",
+      name: "",
+      email: "",
+      role: "TEACHER",
+      password: "",
+      school: "",
+      status: "active",
+      profile_image: "",
+    });
+  };
+
+  // ================= FETCH USERS =================
   const fetchUsers = async () => {
     setLoading(true);
+    setError("");
     try {
-      const token = localStorage.getItem("token");
-      console.log("Fetching users with token:", token ? "Token present" : "No token");
-      const response = await fetch('http://localhost:5000/api/users/users', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      console.log("Fetching users from:", `${API_URL}/api/users/`);
+      const response = await fetch(`${API_URL}/api/users/`);
       console.log("Response status:", response.status);
       console.log("Response ok:", response.ok);
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("Response error text:", errorText);
+        console.error("Response error:", errorText);
         throw new Error(`Failed to fetch users: ${response.status} - ${errorText}`);
       }
-      
+
       const data = await response.json();
       console.log("Response data:", data);
       
-      // Check if data has the expected structure
-      if (!data || !data.users || !Array.isArray(data.users)) {
-        console.error("Invalid API response structure:", data);
-        throw new Error("Invalid API response structure");
+      if (!data || !data.users) {
+        console.error("Invalid response structure:", data);
+        throw new Error("Invalid response from server");
       }
       
-      // Transform API response to match frontend User interface
       const transformedUsers = data.users.map((user: any) => ({
-        id: user.id ? user.id.toString() : "",
+        id: user.id?.toString() || "",
         name: user.name || "",
         email: user.email || "",
         role: user.role || "",
-        school: user.school || "",
         status: user.status || "active",
-        createdAt: user.created_at ? new Date(user.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
-        password: user.password || ""
+        school: user.school_id || "",
+        profile_image: user.profile_image || "",
+        createdAt: user.created_at
+          ? new Date(user.created_at).toLocaleDateString()
+          : "",
       }));
       console.log("Transformed users:", transformedUsers);
       setUsers(transformedUsers);
-      setLoading(false);
-    } catch (error) {
-      console.error("Error fetching users:", error);
-      // Fallback to empty array if API fails
+    } catch (err) {
+      console.error("Fetch users error:", err);
+      setError("Could not load users.");
       setUsers([]);
+    } finally {
       setLoading(false);
     }
   };
 
-  const handleAddUser = () => {
-    setEditingUser(null);
-    setFormData({
-      name: "",
-      email: "",
-      role: "teacher",
-      school: "",
-      status: "active",
-      password: "",
-      profile_image: ""
-    });
-    setImageFile(null);
-    setIsModalOpen(true);
-  };
-
-  const handleEditUser = (user: User) => {
-    setEditingUser(user);
-    setFormData({
-      name: user.name,
-      email: user.email,
-      role: user.role as any,
-      school: user.school || "",
-      status: user.status,
-      password: user.password || "",
-      profile_image: ""
-    });
-    setIsModalOpen(true);
-  };
-
-
-  const handleChangePassword = async (userId: string, newPassword: string) => {
-    if (!newPassword) {
-      alert("Please enter a new password");
-      return;
-    }
-
+  // ================= UPDATE =================
+  const handleUpdateUser = async () => {
+    if (!editingUser) return;
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`http://localhost:5000/api/users/users/${userId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ password: newPassword })
+      console.log("Updating user:", editingUser);
+      const response = await fetch(`${API_URL}/api/users/${editingUser.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...editingUser,
+          id: parseInt(editingUser.id) // Ensure ID is sent as number
+        }),
       });
       
-      if (response.ok) {
-        alert("Password updated successfully");
-        // Refresh the users list
-        fetchUsers();
-      } else {
-        console.error("Failed to update password");
-        alert("Failed to update password");
+      console.log("Update response status:", response.status);
+      console.log("Update response ok:", response.ok);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Update response error:", errorText);
+        throw new Error(`Failed to update user: ${response.status} - ${errorText}`);
       }
-    } catch (error) {
-      console.error("Error updating password:", error);
-      alert("Error updating password");
+      
+      fetchUsers();
+      setEditingUser(null);
+      setShowModal(false);
+      showToast("User updated successfully!", "success");
+    } catch (err) {
+      console.error("Update user error:", err);
+      showToast("Failed to update user. Please try again.", "error");
     }
   };
 
-  const handleDeleteUser = async (userId: string) => {
-    if (confirm("Are you sure you want to delete this user?")) {
-      try {
-        const token = localStorage.getItem("token");
-        const response = await fetch(`http://localhost:5000/api/users/users/${userId}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (response.ok) {
-          setUsers(users.filter(user => user.id !== userId));
-        } else {
-          console.error("Failed to delete user");
-        }
-      } catch (error) {
-        console.error("Error deleting user:", error);
-      }
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // ================= CREATE =================
+  const handleCreateUser = async () => {
     try {
-      if (editingUser) {
-        // Update user via API
-        const token = localStorage.getItem("token");
-        const response = await fetch(`http://localhost:5000/api/users/users/${editingUser.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify(formData),
-        });
-        
-        if (response.ok) {
-          const updatedUser = await response.json();
-          setUsers(users.map(user => 
-            user.id === editingUser.id 
-              ? updatedUser
-              : user
-          ));
-        } else {
-          console.error("Failed to update user");
-          const errorText = await response.text();
-          console.error("Error response:", errorText);
-        }
-      } else {
-        
-        const token = localStorage.getItem("token");
-        const response = await fetch('http://localhost:5000/api/users/users', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify(formData),
-        });
-        
-        if (response.ok) {
-          const newUser = await response.json();
-          setUsers([...users, newUser]);
-        } else {
-          console.error("Failed to create user");
-          const errorText = await response.text();
-          console.error("Error response:", errorText);
-        }
+      const response = await fetch(`${API_URL}/api/users/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to create user");
       }
-      setIsModalOpen(false);
-    } catch (error) {
-      console.error("Error saving user:", error);
+      
+      fetchUsers();
+      setShowModal(false);
+      showToast("User created successfully!", "success");
+    } catch (err) {
+      console.error("Create user error:", err);
+      showToast("Failed to create user. Please try again.", "error");
     }
   };
 
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.role.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = roleFilter === "all" || user.role === roleFilter;
-    const matchesStatus = statusFilter === "all" || user.status === statusFilter;
+  // ================= DELETE =================
+  const handleDeleteUser = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this user? This action cannot be undone.")) {
+      return;
+    }
     
-    return matchesSearch && matchesRole && matchesStatus;
-  });
-
-  const exportUsers = () => {
-    const csvContent = [
-      ["Name", "Email", "Role", "School", "Status", "Created At"],
-      ...filteredUsers.map(user => [
-        user.name,
-        user.email,
-        user.role,
-        user.school || "",
-        user.status,
-        user.createdAt
-      ])
-    ].map(row => row.join(",")).join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "users.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setImageFile(e.target.files[0]);
+    try {
+      const response = await fetch(`${API_URL}/api/users/${id}`, { method: "DELETE" });
+      
+      if (!response.ok) {
+        throw new Error("Failed to delete user");
+      }
+      
+      fetchUsers();
+      showToast("User deleted successfully!", "success");
+    } catch (err) {
+      console.error("Delete user error:", err);
+      showToast("Failed to delete user. Please try again.", "error");
     }
   };
+
+  const openCreateModal = () => {
+    resetForm();
+    setEditingUser(null);
+    setShowModal(true);
+  };
+
+  const openEditModal = (user: User) => {
+    setEditingUser(user);
+    setShowModal(true);
+  };
+
+  useEffect(() => {
+    fetchUsers();
+    fetchSchools();
+  }, []);
 
   return (
     <div className="users-page">
+      {/* HEADER */}
       <div className="page-header">
-        <h1>{t.users}</h1>
+        <h1>Users Management</h1>
         <div className="header-actions">
-          <button className="btn-export" onClick={exportUsers}>
-            <FaDownload /> Export CSV
-          </button>
-          <button className="btn-add" onClick={handleAddUser}>
-            <FaPlus /> {t.addUser}
+          <button className="btn-add" onClick={openCreateModal}>
+            + Add User
           </button>
         </div>
       </div>
 
-      <div className="filters-section">
-        <div className="search-box">
-          <FaSearch />
-          <input
-            type="text"
-            placeholder={t.searchUsers}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        
-        <div className="filters">
-          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
-            <option value="all">{t.allRoles}</option>
-            <option value="admin">Admin</option>
-            <option value="teacher">Teacher</option>
-            <option value="student">Student</option>
-          </select>
-          
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="all">{t.allStatus}</option>
-            <option value="active">{t.active}</option>
-            <option value="inactive">{t.inactive}</option>
-          </select>
-        </div>
-      </div>
+      {/* ERROR */}
+      {error && <p className="no-data">{error}</p>}
 
-      <div className="users-table-container">
-        <table className="users-table">
-          <thead>
-            <tr>
-              <th>{t.name}</th>
-              <th>{t.email}</th>
-              <th>{t.role}</th>
-              <th>{t.school}</th>
-              <th>Password</th>
-              <th>{t.status}</th>
-              <th>{t.createdAt}</th>
-              <th>{t.actions}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
+      {/* LOADING */}
+      {loading && <p className="loading">Loading users...</p>}
+
+      {/* TABLE */}
+      {!loading && users.length > 0 && (
+        <div className="users-table-container">
+          <table className="users-table">
+            <thead>
               <tr>
-                <td colSpan={7} className="loading">
-                  {t.loading}...
-                </td>
+                <th>Profile</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>School</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
               </tr>
-            ) : filteredUsers.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="no-data">
-                  {t.noUsersFound}
-                </td>
-              </tr>
-            ) : (
-              filteredUsers.map(user => (
+            </thead>
+            <tbody>
+              {users.map((user) => (
                 <tr key={user.id}>
+                  <td>
+                    {user.profile_image ? (
+                      <img
+                        src={user.profile_image}
+                        alt={user.name}
+                        className="profile-thumb"
+                      />
+                    ) : (
+                      "-"
+                    )}
+                  </td>
                   <td>{user.name}</td>
                   <td>{user.email}</td>
                   <td>
@@ -400,148 +282,195 @@ export default function UsersPage() {
                   </td>
                   <td>{user.school || "-"}</td>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>
-                        {user.password ? '••••••••' : 'No password'}
-                      </span>
-                      <button
-                        className="btn-edit"
-                        onClick={() => {
-                          const newPassword = prompt('Enter new password:', '');
-                          if (newPassword !== null) {
-                            handleChangePassword(user.id, newPassword);
-                          }
-                        }}
-                        style={{ padding: '2px 6px', fontSize: '10px' }}
-                      >
-                        Change
-                      </button>
-                    </div>
-                  </td>
-                  <td>
                     <span className={`status-badge ${user.status}`}>
                       {user.status}
                     </span>
                   </td>
                   <td>{user.createdAt}</td>
-                  <td className="actions">
-                    <button
-                      className="btn-edit"
-                      onClick={() => handleEditUser(user)}
-                    >
-                      <FaEdit />
-                    </button>
-                    <button
-                      className="btn-delete"
-                      onClick={() => handleDeleteUser(user.id)}
-                    >
-                      <FaTrash />
-                    </button>
+                  <td>
+                    <div className="actions">
+                      <button
+                        className="btn-edit"
+                        onClick={() => openEditModal(user)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="btn-delete"
+                        onClick={() => handleDeleteUser(user.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-      {/* Add/Edit User Modal */}
-      {isModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      {!loading && users.length === 0 && (
+        <p className="no-data">No users found.</p>
+      )}
+
+      {/* TOAST NOTIFICATION */}
+      {toast.show && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={() => setToast({ show: false, message: "", type: "success" })}
+        />
+      )}
+
+      {/* MODAL */}
+      {showModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
             <div className="modal-header">
-              <h2>{editingUser ? t.editUser : t.addUser}</h2>
-              <button className="modal-close" onClick={() => setIsModalOpen(false)}>
+              <h2>{editingUser ? "Edit User" : "Create User"}</h2>
+              <button className="modal-close" onClick={() => setShowModal(false)}>
                 ×
               </button>
             </div>
-            
-            <form onSubmit={handleSubmit} className="user-form">
+
+            <div className="user-form">
+              {/* Name */}
               <div className="form-group">
-                <label>{t.name}</label>
+                <label>Name</label>
                 <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  required
+                  value={editingUser ? editingUser.name : formData.name}
+                  onChange={(e) =>
+                    editingUser
+                      ? setEditingUser({ ...editingUser, name: e.target.value })
+                      : setFormData({ ...formData, name: e.target.value })
+                  }
                 />
               </div>
-              
+
+              {/* Email */}
               <div className="form-group">
-                <label>{t.email}</label>
+                <label>Email</label>
                 <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  required
+                  value={editingUser ? editingUser.email : formData.email}
+                  onChange={(e) =>
+                    editingUser
+                      ? setEditingUser({ ...editingUser, email: e.target.value })
+                      : setFormData({ ...formData, email: e.target.value })
+                  }
                 />
               </div>
-              
-              <div className="form-group">
-                <label>{t.role}</label>
-                <select
-                  value={formData.role}
-                  onChange={(e) => setFormData({...formData, role: e.target.value as any})}
-                >
-                  <option value="admin">Admin</option>
-                  <option value="teacher">Teacher</option>
-                  <option value="student">Student</option>
-                </select>
-              </div>
-              
-              <div className="form-group">
-                <label>{t.school}</label>
-                <input
-                  type="text"
-                  value={formData.school}
-                  onChange={(e) => setFormData({...formData, school: e.target.value})}
-                />
-              </div>
-              
+
+              {/* Password */}
               <div className="form-group">
                 <label>Password</label>
                 <input
                   type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  placeholder="Leave empty to keep current password"
+                  value={editingUser ? editingUser.password || "" : formData.password}
+                  onChange={(e) =>
+                    editingUser
+                      ? setEditingUser({ ...editingUser, password: e.target.value })
+                      : setFormData({ ...formData, password: e.target.value })
+                  }
+                  placeholder={editingUser ? "Leave blank to keep current password" : ""}
                 />
               </div>
-              
+
+              {/* Role */}
               <div className="form-group">
-                <label>{t.status}</label>
+                <label>Role</label>
                 <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({...formData, status: e.target.value as any})}
+                  value={editingUser ? editingUser.role : formData.role}
+                  onChange={(e) =>
+                    editingUser
+                      ? setEditingUser({ ...editingUser, role: e.target.value })
+                      : setFormData({ ...formData, role: e.target.value })
+                  }
                 >
-                  <option value="active">{t.active}</option>
-                  <option value="inactive">{t.inactive}</option>
+                  <option value="SUPER_ADMIN">Super Admin</option>
+                  <option value="ADMIN">Admin</option>
+                  <option value="TEACHER">Teacher</option>
+                  <option value="STUDENT">Student</option>
                 </select>
               </div>
-              
+
+              {/* School */}
               <div className="form-group">
-                <label>{t.profileImage}</label>
-                <div className="image-upload">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                  />
-                  <span className="upload-icon">
-                    <FaUpload />
-                  </span>
-                </div>
+                <label>School</label>
+                <select
+                  value={editingUser ? editingUser.school : formData.school}
+                  onChange={(e) =>
+                    editingUser
+                      ? setEditingUser({ ...editingUser, school: e.target.value })
+                      : setFormData({ ...formData, school: e.target.value })
+                  }
+                >
+                  <option value="">Select School</option>
+                  {schools.map((school) => (
+                    <option key={school.id} value={school.id}>
+                      {school.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-              
+
+              {/* Status */}
+              <div className="form-group">
+                <label>Status</label>
+                <select
+                  value={editingUser ? editingUser.status : formData.status}
+                  onChange={(e) =>
+                    editingUser
+                      ? setEditingUser({ ...editingUser, status: e.target.value })
+                      : setFormData({ ...formData, status: e.target.value })
+                  }
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+
+              {/* Profile Image */}
+              <div className="form-group">
+                <label>Profile Image</label>
+                {editingUser && editingUser.profile_image && (
+                  <div className="current-profile-image">
+                    <p>Current Profile Image:</p>
+                    <img src={editingUser.profile_image} alt="Current Profile" className="current-profile-thumb" />
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      const base64 = reader.result as string;
+                      editingUser
+                        ? setEditingUser({ ...editingUser, profile_image: base64 })
+                        : setFormData({ ...formData, profile_image: base64 });
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                />
+                <small className="form-hint">Select a new image to update the profile picture</small>
+              </div>
+
+              {/* ACTIONS */}
               <div className="form-actions">
-                <button type="button" className="btn-cancel" onClick={() => setIsModalOpen(false)}>
-                  {t.cancel}
+                <button className="btn-cancel" onClick={() => setShowModal(false)}>
+                  Cancel
                 </button>
-                <button type="submit" className="btn-save">
-                  {editingUser ? t.updateUser : t.createUser}
+                <button
+                  className="btn-save"
+                  onClick={editingUser ? handleUpdateUser : handleCreateUser}
+                >
+                  {editingUser ? "Save Changes" : "Create User"}
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
