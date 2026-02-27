@@ -11,6 +11,7 @@ type School = {
   name: string;
   email?: string;
   phone?: string;
+  password?: string;
   created_at?: string;
 };
 
@@ -18,7 +19,7 @@ type School = {
 const Toast = ({ message, type, onClose }: { message: string; type: string; onClose: () => void }) => (
   <div className={`toast toast-${type}`}>
     <span>{message}</span>
-    <button className="toast-close" onClick={onClose}>×</button>
+    <button className="toast-close" onClick={onClose}>×</button> 
   </div>
 );
 
@@ -48,15 +49,23 @@ export default function AdminSchoolsPage() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`${API_URL}/api/schools/`);
+      console.log("Attempting to fetch schools from:", `${API_URL}/api/schools`);
+      const response = await fetch(`${API_URL}/api/schools`);
+      console.log("Response status:", response.status);
+      console.log("Response ok:", response.ok);
+      
       if (!response.ok) {
-        throw new Error("Failed to fetch schools");
+        const errorText = await response.text();
+        console.error("Response error:", errorText);
+        throw new Error(`Failed to fetch schools: ${response.status} - ${errorText}`);
       }
+      
       const data = await response.json();
+      console.log("Response data:", data);
       setSchools(data.schools || []);
     } catch (err) {
       console.error("Fetch schools error:", err);
-      setError("Could not load schools.");
+      setError("Could not load schools. Please check if the backend server is running on port 5000.");
       setSchools([]);
     } finally {
       setLoading(false);
@@ -100,7 +109,7 @@ export default function AdminSchoolsPage() {
   const handleUpdateSchool = async () => {
     if (!editingSchool) return;
     try {
-      const response = await fetch(`${API_URL}/api/schools/${editingSchool.id}/`, {
+      const response = await fetch(`${API_URL}/api/schools/${editingSchool.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editingSchool),
@@ -183,6 +192,7 @@ export default function AdminSchoolsPage() {
                   <th>Name</th>
                   <th>Email</th>
                   <th>Phone</th>
+                  <th>Password Set</th>
                   <th>Created</th>
                   <th>Actions</th>
                 </tr>
@@ -195,6 +205,13 @@ export default function AdminSchoolsPage() {
                     </td>
                     <td>{school.email || "-"}</td>
                     <td>{school.phone || "-"}</td>
+                    <td>
+                      {school.password ? (
+                        <span className="status-badge status-success">Yes</span>
+                      ) : (
+                        <span className="status-badge status-warning">No</span>
+                      )}
+                    </td>
                     <td>{school.created_at ? new Date(school.created_at).toLocaleDateString() : "-"}</td>
                     <td>
                       <div className="actions">
@@ -286,6 +303,21 @@ export default function AdminSchoolsPage() {
                       : setFormData({ ...formData, phone: e.target.value })
                   }
                   placeholder="Enter school phone number"
+                />
+              </div>
+
+              {/* Password */}
+              <div className="form-group">
+                <label>Password</label>
+                <input
+                  type="password"
+                  value={editingSchool ? editingSchool.password || "" : formData.password || ""}
+                  onChange={(e) =>
+                    editingSchool
+                      ? setEditingSchool({ ...editingSchool, password: e.target.value })
+                      : setFormData({ ...formData, password: e.target.value })
+                  }
+                  placeholder={editingSchool ? "Leave blank to keep current password" : "Enter school password"}
                 />
               </div>
 
