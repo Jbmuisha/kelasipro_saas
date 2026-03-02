@@ -33,7 +33,6 @@ import {
   FaCalendarPlus,
   FaCalendarDay,
   FaCalendarWeek,
-  FaCalendarAlt,
   FaCalendar,
   FaCalendarMinus,
 } from "react-icons/fa";
@@ -371,7 +370,7 @@ export default function SchoolDashboard() {
         <div className="search-group">
           <h4>Recherche Rapide</h4>
           <div className="search-box">
-            <FaSearch className="search-icon" />
+            <FaSearch />
             <input type="text" placeholder="Rechercher une école, enseignant ou élève..." />
             <button className="search-btn">Rechercher</button>
           </div>

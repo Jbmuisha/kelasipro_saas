@@ -130,6 +130,7 @@ export default function SchoolLayout({
     { name: t.classes, href: "/dashboard/school/classes", icon: <FaSchool /> },
     { name: t.reports, href: "/dashboard/school/reports", icon: <FaChartBar /> },
     { name: t.settings, href: "/dashboard/school/settings", icon: <FaCog /> },
+    
   ];
 
   return (

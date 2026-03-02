@@ -136,7 +136,7 @@ class User:
                 return False  # nothing to update
 
             values.append(self.id)
-            query = f"UPDATE users SET {', '.join(fields)} WHERE id=%s"
+            query = "UPDATE users SET " + ", ".join(fields) + " WHERE id=%s"
             cursor.execute(query, values)
             conn.commit()
             updated = self.get_by_id(self.id)
@@ -160,11 +160,12 @@ class User:
 
 
 class School:
-    def __init__(self, id, name, email=None, phone=None, created_at=None):
+    def __init__(self, id, name, email=None, phone=None, password=None, created_at=None):
         self.id = id
         self.name = name
         self.email = email
         self.phone = phone
+        self.password = password
         self.created_at = created_at
 
     @classmethod
@@ -174,6 +175,7 @@ class School:
             name=data['name'],
             email=data.get('email'),
             phone=data.get('phone'),
+            password=data.get('password'),
             created_at=data.get('created_at')
         )
 
@@ -183,6 +185,7 @@ class School:
             'name': self.name,
             'email': self.email,
             'phone': self.phone,
+            'password': self.password.decode() if isinstance(self.password, bytes) else self.password,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
@@ -190,7 +193,7 @@ class School:
     def get_all(cls):
         conn = get_connection()
         with conn.cursor() as cursor:
-            cursor.execute("SELECT id, name, email, phone, created_at FROM schools ORDER BY created_at DESC")
+            cursor.execute("SELECT id, name, email, phone, password, created_at FROM schools ORDER BY created_at DESC")
             data = cursor.fetchall()
         return [cls.from_dict(d) for d in data]
 
@@ -198,21 +201,27 @@ class School:
     def get_by_id(cls, school_id):
         conn = get_connection()
         with conn.cursor() as cursor:
-            cursor.execute("SELECT id, name, email, phone, created_at FROM schools WHERE id=%s", (school_id,))
+            cursor.execute("SELECT id, name, email, phone, password, created_at FROM schools WHERE id=%s", (school_id,))
             data = cursor.fetchone()
         if data:
             return cls.from_dict(data)
         return None
 
     @classmethod
-    def create(cls, name, email=None, phone=None):
+    def create(cls, name, email=None, phone=None, password=None):
         conn = get_connection()
         with conn.cursor() as cursor:
-            cursor.execute("INSERT INTO schools (name, email, phone) VALUES (%s, %s, %s)", (name, email, phone))
+            # Hash password if provided
+            hashed_password = None
+            if password:
+                hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+            
+            cursor.execute("INSERT INTO schools (name, email, phone, password) VALUES (%s, %s, %s, %s)", 
+                          (name, email, phone, hashed_password))
             conn.commit()
             return cls.get_by_id(cursor.lastrowid)
 
-    def update(self, name=None, email=None, phone=None):
+    def update(self, name=None, email=None, phone=None, password=None):
         conn = get_connection()
         with conn.cursor() as cursor:
             fields = []
@@ -226,9 +235,13 @@ class School:
             if phone is not None:
                 fields.append("phone=%s")
                 values.append(phone)
+            if password is not None:
+                hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+                fields.append("password=%s")
+                values.append(hashed_password)
             if fields:
                 values.append(self.id)
-                query = f"UPDATE schools SET {', '.join(fields)} WHERE id=%s"
+                query = "UPDATE schools SET " + ", ".join(fields) + " WHERE id=%s"
                 cursor.execute(query, values)
                 conn.commit()
                 updated = self.get_by_id(self.id)

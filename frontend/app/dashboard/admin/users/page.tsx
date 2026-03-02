@@ -169,15 +169,52 @@ export default function AdminUsersPage() {
   // ================= CREATE =================
   const handleCreateUser = async () => {
     try {
+      console.log("Creating user with data:", formData);
+      
+      // Prepare the data to send to backend
+      const requestData = {
+        name: formData.name,
+        email: formData.email,
+        role: formData.role,
+        password: formData.password,
+        status: formData.status,
+        profile_image: formData.profile_image,
+        // Only include school if it's not SUPER_ADMIN
+        school_id: formData.role === "SUPER_ADMIN" ? null : formData.school
+      };
+      
+      console.log("Sending request data:", requestData);
+      
       const response = await fetch(`${API_URL}/api/users/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(requestData),
       });
       
+      console.log("Create user response status:", response.status);
+      console.log("Create user response ok:", response.ok);
+      
       if (!response.ok) {
-        throw new Error("Failed to create user");
+        const errorText = await response.text();
+        console.error("Create user response error:", errorText);
+        
+        // Try to parse the error response to show a more user-friendly message
+        let errorMessage = "Failed to create user";
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch (e) {
+          // If we can't parse as JSON, use the raw text
+          errorMessage = errorText;
+        }
+        
+        throw new Error(errorMessage);
       }
+      
+      const result = await response.json();
+      console.log("Create user result:", result);
       
       fetchUsers();
       setShowModal(false);
@@ -381,38 +418,50 @@ export default function AdminUsersPage() {
                 <label>Role</label>
                 <select
                   value={editingUser ? editingUser.role : formData.role}
-                  onChange={(e) =>
-                    editingUser
-                      ? setEditingUser({ ...editingUser, role: e.target.value })
-                      : setFormData({ ...formData, role: e.target.value })
-                  }
+                  onChange={(e) => {
+                    const newRole = e.target.value;
+                    if (editingUser) {
+                      setEditingUser({ ...editingUser, role: newRole });
+                    } else {
+                      setFormData({ ...formData, role: newRole });
+                    }
+                  }}
                 >
                   <option value="SUPER_ADMIN">Super Admin</option>
-                  <option value="ADMIN">Admin</option>
+                  <option value="SCHOOL_ADMIN">School Admin</option>
                   <option value="TEACHER">Teacher</option>
                   <option value="STUDENT">Student</option>
                 </select>
               </div>
 
-              {/* School */}
-              <div className="form-group">
-                <label>School</label>
-                <select
-                  value={editingUser ? editingUser.school : formData.school}
-                  onChange={(e) =>
-                    editingUser
-                      ? setEditingUser({ ...editingUser, school: e.target.value })
-                      : setFormData({ ...formData, school: e.target.value })
-                  }
-                >
-                  <option value="">Select School</option>
-                  {schools.map((school) => (
-                    <option key={school.id} value={school.id}>
-                      {school.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* School - Only show for non-Super Admin roles */}
+              {(editingUser?.role !== "SUPER_ADMIN" && formData.role !== "SUPER_ADMIN") && (
+                <div className="form-group">
+                  <label>School</label>
+                  <select
+                    value={editingUser ? editingUser.school : formData.school}
+                    onChange={(e) => {
+                      const newSchool = e.target.value;
+                      if (editingUser) {
+                        setEditingUser({ ...editingUser, school: newSchool });
+                      } else {
+                        setFormData({ ...formData, school: newSchool });
+                      }
+                    }}
+                    required={formData.role !== "SUPER_ADMIN"}
+                  >
+                    <option value="">Select School</option>
+                    {schools.map((school) => (
+                      <option key={school.id} value={school.id}>
+                        {school.name}
+                      </option>
+                    ))}
+                  </select>
+                  <small className="form-hint">
+                    {formData.role === "SUPER_ADMIN" ? "Super Admin has access to all schools" : "Select the school for this user"}
+                  </small>
+                </div>
+              )}
 
               {/* Status */}
               <div className="form-group">

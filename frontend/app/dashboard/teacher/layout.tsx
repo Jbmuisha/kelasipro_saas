@@ -4,91 +4,71 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   FaTachometerAlt,
-  FaSchool,
-  FaUsers,
-  FaUserTie,
+  FaChalkboardTeacher,
   FaUserGraduate,
-  FaMoneyBillWave,
-  FaChartLine,
+  FaBook,
+  FaClipboardList,
+  FaCalendarAlt,
+  FaChartBar,
+  FaBell,
   FaCog,
   FaSignOutAlt,
-  FaBell,
   FaBars,
   FaTimes,
 } from "react-icons/fa";
 import { useState, useEffect } from "react";
-import "./superadmin.css";
+import "@/app/dashboard/teacher/teacher.css";
 
 /* ---------------- Translation System ---------------- */
 
 const translations = {
   fr: {
     dashboard: "Tableau de bord",
-    schools: "Écoles",
-    admins: "Administrateurs",
-    teachers: "Enseignants",
-    students: "Étudiants",
-    subscriptions: "Abonnements",
+    classes: "Classes",
+    students: "Élèves",
+    assignments: "Devoirs",
+    grades: "Notes",
+    attendance: "Présence",
     reports: "Rapports",
     settings: "Paramètres",
     logout: "Déconnexion",
-    search: "Rechercher écoles, utilisateurs...",
-    owner: "Propriétaire de la plateforme",
-    users: "Utilisateurs",
-    addUser: "Ajouter un utilisateur",
-    editUser: "Modifier l'utilisateur",
-    updateUser: "Mettre à jour l'utilisateur",
-    createUser: "Créer l'utilisateur",
-    name: "Nom",
-    email: "Email",
-    role: "Rôle",
-    school: "École",
-    status: "Statut",
-    createdAt: "Créé le",
-    actions: "Actions",
-    searchUsers: "Rechercher des utilisateurs...",
-    allRoles: "Tous les rôles",
-    allStatus: "Tous les statuts",
-    active: "Actif",
-    inactive: "Inactif",
+    search: "Rechercher élèves, devoirs...",
+    teacher: "Enseignant",
+    welcome: "Bienvenue",
+    myClasses: "Mes Classes",
+    manageStudents: "Gérer les Élèves",
+    createAssignment: "Créer un Devoir",
+    viewGrades: "Voir les Notes",
+    takeAttendance: "Prendre l'Appel",
+    generateReports: "Générer des Rapports",
+    profileSettings: "Paramètres du Profil",
     loading: "Chargement",
-    noUsersFound: "Aucun utilisateur trouvé",
+    noData: "Aucune donnée disponible",
     cancel: "Annuler",
-    profileImage: "Image de profil",
   },
   en: {
     dashboard: "Dashboard",
-    schools: "Schools",
-    admins: "Admins",
-    teachers: "Teachers",
+    classes: "Classes",
     students: "Students",
-    subscriptions: "Subscriptions",
+    assignments: "Assignments",
+    grades: "Grades",
+    attendance: "Attendance",
     reports: "Reports",
     settings: "Settings",
     logout: "Logout",
-    search: "Search schools, users...",
-    owner: "Platform Owner",
-    users: "Users",
-    addUser: "Add User",
-    editUser: "Edit User",
-    updateUser: "Update User",
-    createUser: "Create User",
-    name: "Name",
-    email: "Email",
-    role: "Role",
-    school: "School",
-    status: "Status",
-    createdAt: "Created At",
-    actions: "Actions",
-    searchUsers: "Search users...",
-    allRoles: "All Roles",
-    allStatus: "All Status",
-    active: "Active",
-    inactive: "Inactive",
+    search: "Search students, assignments...",
+    teacher: "Teacher",
+    welcome: "Welcome",
+    myClasses: "My Classes",
+    manageStudents: "Manage Students",
+    createAssignment: "Create Assignment",
+    viewGrades: "View Grades",
+    takeAttendance: "Take Attendance",
+    generateReports: "Generate Reports",
+    profileSettings: "Profile Settings",
     loading: "Loading",
-    noUsersFound: "No users found",
+    noData: "No data available",
     cancel: "Cancel",
-    profileImage: "Profile Image",
   },
 };
 
@@ -117,7 +97,7 @@ function useIsMobile(breakpoint = 768) {
 
 /* ---------------- Component ---------------- */
 
-export default function SuperAdminLayout({
+export default function TeacherLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -130,28 +110,27 @@ export default function SuperAdminLayout({
   const isMobile = useIsMobile();
 
   const menu = [
-    { name: t.dashboard, href: "/dashboard/superadmin", icon: <FaTachometerAlt /> },
-    { name: t.users, href: "/dashboard/admin/users", icon: <FaUsers /> },
-    { name: t.schools, href: "/dashboard/admin/school", icon: <FaSchool /> },
-    { name: t.admins, href: "/dashboard/admin/admins", icon: <FaUserTie /> },
-    { name: t.teachers, href: "/dashboard/admin/teachers", icon: <FaUsers /> },
-    { name: t.students, href: "/dashboard/admin/students", icon: <FaUserGraduate /> },
-    { name: t.subscriptions, href: "/dashboard/admin/subscriptions", icon: <FaMoneyBillWave /> },
-    { name: t.reports, href: "/dashboard/admin/reports", icon: <FaChartLine /> },
-    { name: t.settings, href: "/dashboard/admin/settings", icon: <FaCog /> },
+    { name: t.dashboard, href: "/dashboard/teacher", icon: <FaTachometerAlt /> },
+    { name: t.classes, href: "/dashboard/teacher/classes", icon: <FaChalkboardTeacher /> },
+    { name: t.students, href: "/dashboard/teacher/students", icon: <FaUserGraduate /> },
+    { name: t.assignments, href: "/dashboard/teacher/assignments", icon: <FaClipboardList /> },
+    { name: t.grades, href: "/dashboard/teacher/grades", icon: <FaBook /> },
+    { name: t.attendance, href: "/dashboard/teacher/attendance", icon: <FaCalendarAlt /> },
+    { name: t.reports, href: "/dashboard/teacher/reports", icon: <FaChartBar /> },
+    { name: t.settings, href: "/dashboard/teacher/settings", icon: <FaCog /> },
   ];
 
   return (
-    <div className={`super-layout ${sidebarOpen ? "" : "sidebar-closed"}`}>
+    <div className={`teacher-layout ${sidebarOpen ? "" : "sidebar-closed"}`}>
 
       <button className="sidebar-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
         {sidebarOpen ? <FaTimes /> : <FaBars />}
       </button>
 
       {/* Sidebar */}
-      <aside className="super-sidebar">
-        <div className="super-logo">
-          🚀 SP!K <span>Super Admin</span>
+      <aside className="teacher-sidebar">
+        <div className="teacher-logo">
+          📚 SP!K <span>Enseignant</span>
         </div>
 
         {isMobile && (
@@ -159,12 +138,12 @@ export default function SuperAdminLayout({
             <input
               type="text"
               placeholder={t.search}
-              className="super-search"
+              className="teacher-search"
             />
           </div>
         )}
 
-        <ul className="super-menu">
+        <ul className="teacher-menu">
           {menu.map((item) => (
             <li
               key={item.href}
@@ -184,20 +163,20 @@ export default function SuperAdminLayout({
       </aside>
 
       {/* Main */}
-      <div className="super-main">
-        <header className="super-topbar">
+      <div className="teacher-main">
+        <header className="teacher-topbar">
 
           <div className="topbar-left">
             {!sidebarOpen && (
-              <div className="super-logo" style={{ fontSize: '18px', marginBottom: '0', marginRight: '20px' }}>
-                🚀 SP!K <span style={{ fontSize: '11px' }}>Super Admin</span>
+              <div className="teacher-logo" style={{ fontSize: '18px', marginBottom: '0', marginRight: '20px' }}>
+                📚 SP!K <span style={{ fontSize: '11px' }}>Enseignant</span>
               </div>
             )}
             {!isMobile && (
               <input
                 type="text"
                 placeholder={t.search}
-                className="super-search"
+                className="teacher-search"
               />
             )}
           </div>
@@ -217,21 +196,21 @@ export default function SuperAdminLayout({
               <span className="notification-badge">3</span>
             </div>
 
-            <div className="super-profile">
+            <div className="teacher-profile">
               <img
                 src="https://i.pravatar.cc/40"
                 alt="profile"
                 className="avatar"
               />
               <div className="profile-info">
-                <strong>Super Admin</strong>
-                <p>{t.owner}</p>
+                <strong>Enseignant</strong>
+                <p>{t.teacher}</p>
               </div>
             </div>
           </div>
         </header>
 
-        <main className="super-content">{children}</main>
+        <main className="teacher-content">{children}</main>
       </div>
     </div>
   );

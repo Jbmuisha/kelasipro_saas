@@ -15,6 +15,17 @@ def get_schools():
         print(f"[ERROR] get_schools: {str(e)}")
         return jsonify({"error": str(e), "schools": []}), 500
 
+@schools_bp.route("", methods=["GET"])
+def get_schools_no_slash():
+    try:
+        schools = School.get_all()  # Returns list of School instances
+        print(f"[DEBUG] Fetched {len(schools)} schools")  # Debug
+        schools_json = [school.to_dict() for school in schools]
+        return jsonify({"schools": schools_json})
+    except Exception as e:
+        print(f"[ERROR] get_schools: {str(e)}")
+        return jsonify({"error": str(e), "schools": []}), 500
+
 # ================= GET SCHOOL BY ID =================
 @schools_bp.route("/<int:school_id>", methods=["GET"])
 def get_school(school_id):
@@ -35,7 +46,8 @@ def create_school():
         school = School.create(
             name=data.get("name"),
             email=data.get("email"),
-            phone=data.get("phone")
+            phone=data.get("phone"),
+            password=data.get("password")
         )
         print(f"[DEBUG] Created school: {school.to_dict()}")
         return jsonify(school.to_dict())
@@ -55,7 +67,8 @@ def update_school(school_id):
         school.update(
             name=data.get("name"),
             email=data.get("email"),
-            phone=data.get("phone")
+            phone=data.get("phone"),
+            password=data.get("password")
         )
         updated = School.get_by_id(school_id)
         print(f"[DEBUG] Updated school: {updated.to_dict()}")
