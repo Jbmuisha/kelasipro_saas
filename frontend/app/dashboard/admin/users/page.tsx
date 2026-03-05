@@ -431,6 +431,7 @@ export default function AdminUsersPage() {
                   <option value="SCHOOL_ADMIN">School Admin</option>
                   <option value="TEACHER">Teacher</option>
                   <option value="STUDENT">Student</option>
+                  <option value="PARENT"> Parent</option>
                 </select>
               </div>
 
