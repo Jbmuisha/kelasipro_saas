@@ -5,7 +5,7 @@ from datetime import datetime
 
 class User:
     def __init__(self, id, name, email, role, created_at=None,
-                 school_id=None, status=None, profile_image=None):
+                 school_id=None, status=None, profile_image=None, class_id=None, unique_id=None):
         self.id = id
         self.name = name
         self.email = email
@@ -14,6 +14,10 @@ class User:
         self.school_id = school_id
         self.status = status
         self.profile_image = profile_image
+        self.class_id = class_id
+        self.unique_id = unique_id
+        self.children = [] # For parents
+        self.parents = [] # For students
 
     @classmethod
     def from_dict(cls, data):
@@ -21,13 +25,19 @@ class User:
         user = cls(
             id=data['id'],
             name=data['name'],
-            email=data['email'],
+            email=data.get('email'),
             role=data['role'],
             created_at=data.get('created_at'),
             school_id=data.get('school_id'),
             status=data.get('status'),
-            profile_image=data.get('profile_image')
+            profile_image=data.get('profile_image'),
+            class_id=data.get('class_id'),
+            unique_id=data.get('unique_id')
         )
+        if 'children' in data:
+            user.children = data['children']
+        if 'parents' in data:
+            user.parents = data['parents']
         # Add password attribute if it exists
         if 'password' in data:
             user.password = data['password']
@@ -42,30 +52,47 @@ class User:
             'role': self.role,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'school_id': self.school_id,
+            'class_id': self.class_id,
+            'unique_id': self.unique_id,
             'status': self.status,
             'profile_image': self.profile_image,
-            'password': self.password.decode() if hasattr(self, 'password') and isinstance(self.password, bytes) else (self.password if hasattr(self, 'password') else None)
+            'password': self.password.decode() if hasattr(self, 'password') and isinstance(self.password, bytes) else (self.password if hasattr(self, 'password') else None),
+            'children': self.children,
+            'parents': self.parents
         }
 
     @classmethod
-    def get_all(cls, include_super_admin=True):
+    def get_all(cls, include_super_admin=True, school_id=None):
         """Get all users from database"""
         conn = get_connection()
         with conn.cursor() as cursor:
-            if include_super_admin:
-                cursor.execute("""
-                    SELECT id, name, email, role, created_at, school_id, password, status, profile_image
-                    FROM users
-                    ORDER BY created_at DESC
-                """)
-            else:
-                cursor.execute("""
-                    SELECT id, name, email, role, created_at, school_id, password, status, profile_image
-                    FROM users
-                    WHERE role != 'SUPER_ADMIN'
-                    ORDER BY created_at DESC
-                """)
+            query = "SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id FROM users WHERE 1=1"
+            params = []
+            if not include_super_admin:
+                query += " AND role != 'SUPER_ADMIN'"
+            if school_id:
+                query += " AND school_id = %s"
+                params.append(school_id)
+            query += " ORDER BY created_at DESC"
+            cursor.execute(query, tuple(params))
             users_data = cursor.fetchall()
+            
+            # Fetch relations
+            cursor.execute("SELECT parent_id, student_id FROM parent_student")
+            relations = cursor.fetchall()
+            
+            students_map = {u['id']: u for u in users_data if u['role'] == 'STUDENT'}
+            
+            for u in users_data:
+                if u['role'] == 'PARENT':
+                    u['children'] = []
+                    for r in relations:
+                        if r['parent_id'] == u['id'] and r['student_id'] in students_map:
+                            u['children'].append({
+                                'id': students_map[r['student_id']]['id'],
+                                'name': students_map[r['student_id']]['name']
+                            })
+                            
         return [cls.from_dict(u) for u in users_data]
 
     @classmethod
@@ -74,38 +101,74 @@ class User:
         conn = get_connection()
         with conn.cursor() as cursor:
             cursor.execute("""
-                SELECT id, name, email, role, created_at, school_id, password, status, profile_image
+                SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id
                 FROM users
                 WHERE id = %s
             """, (user_id,))
             data = cursor.fetchone()
+            
+            if data:
+                if data['role'] == 'PARENT':
+                    cursor.execute("""
+                        SELECT u.id, u.name, u.email, u.class_id 
+                        FROM users u
+                        JOIN parent_student ps ON u.id = ps.student_id
+                        WHERE ps.parent_id = %s
+                    """, (user_id,))
+                    data['children'] = cursor.fetchall()
+                elif data['role'] == 'STUDENT':
+                    cursor.execute("""
+                        SELECT u.id, u.name, u.email 
+                        FROM users u
+                        JOIN parent_student ps ON u.id = ps.parent_id
+                        WHERE ps.student_id = %s
+                    """, (user_id,))
+                    data['parents'] = cursor.fetchall()
+
         if data:
             return cls.from_dict(data)
         return None
 
     @classmethod
-    def create(cls, name, email, password=None, role="USER", school_id=None):
+    def create(cls, name, email=None, password=None, role="USER", school_id=None, class_id=None):
         """Create a new user"""
+        import random
+        
+        # Convert empty string to None
+        if not email:
+            email = None
+            
         conn = get_connection()
         with conn.cursor() as cursor:
             # Check if email already exists
-            cursor.execute("SELECT * FROM users WHERE email=%s", (email,))
-            if cursor.fetchone():
-                raise ValueError("User with this email already exists")
+            if email:
+                cursor.execute("SELECT * FROM users WHERE email=%s", (email,))
+                if cursor.fetchone():
+                    raise ValueError("User with this email already exists")
 
             # Hash password
             if not password:
                 password = "default123"
             hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
 
+            # Generate unique_id for non-admin roles
+            unique_id = None
+            if role in ["STUDENT", "PARENT", "SECRETARY", "TEACHER", "ASSISTANT"]:
+                while True:
+                    # 3 digits
+                    unique_id = f"2026{str(random.randint(0, 999)).zfill(3)}"
+                    cursor.execute("SELECT id FROM users WHERE unique_id=%s", (unique_id,))
+                    if not cursor.fetchone():
+                        break
+
             cursor.execute(
-                "INSERT INTO users (name, email, password, role, school_id) VALUES (%s, %s, %s, %s, %s)",
-                (name, email, hashed_password, role, school_id)
+                "INSERT INTO users (name, email, password, role, school_id, class_id, unique_id) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (name, email, hashed_password, role, school_id, class_id, unique_id)
             )
             conn.commit()
             return cls.get_by_id(cursor.lastrowid)
 
-    def update(self, name=None, email=None, role=None, school_id=None, password=None, profile_image=None):
+    def update(self, name=None, email=None, role=None, school_id=None, password=None, profile_image=None, class_id=None, children_ids=None):
         """Update an existing user"""
         conn = get_connection()
         with conn.cursor() as cursor:
@@ -115,7 +178,9 @@ class User:
             if name:
                 fields.append("name=%s")
                 values.append(name)
-            if email:
+            if email is not None:
+                if email == "":
+                    email = None
                 fields.append("email=%s")
                 values.append(email)
             if role:
@@ -131,13 +196,21 @@ class User:
             if profile_image is not None:
                 fields.append("profile_image=%s")
                 values.append(profile_image)
+            if class_id is not None:
+                fields.append("class_id=%s")
+                values.append(class_id)
 
-            if not fields:
-                return False  # nothing to update
-
-            values.append(self.id)
-            query = "UPDATE users SET " + ", ".join(fields) + " WHERE id=%s"
-            cursor.execute(query, values)
+            if fields:
+                values.append(self.id)
+                query = "UPDATE users SET " + ", ".join(fields) + " WHERE id=%s"
+                cursor.execute(query, values)
+            
+            # Handle children associations for parents
+            if self.role == 'PARENT' and children_ids is not None:
+                cursor.execute("DELETE FROM parent_student WHERE parent_id=%s", (self.id,))
+                for child_id in children_ids:
+                    cursor.execute("INSERT INTO parent_student (parent_id, student_id) VALUES (%s, %s)", (self.id, child_id))
+            
             conn.commit()
             updated = self.get_by_id(self.id)
             self.__dict__.update(updated.__dict__)
@@ -158,6 +231,48 @@ class User:
             conn.commit()
             return True
 
+
+class ClassModel:
+    def __init__(self, id, school_id, name, created_at=None):
+        self.id = id
+        self.school_id = school_id
+        self.name = name
+        self.created_at = created_at
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            id=data['id'],
+            school_id=data['school_id'],
+            name=data['name'],
+            created_at=data.get('created_at')
+        )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'school_id': self.school_id,
+            'name': self.name,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+    @classmethod
+    def get_by_school(cls, school_id):
+        conn = get_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM classes WHERE school_id=%s ORDER BY name ASC", (school_id,))
+            data = cursor.fetchall()
+        return [cls.from_dict(d) for d in data]
+
+    @classmethod
+    def create(cls, school_id, name):
+        conn = get_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("INSERT INTO classes (school_id, name) VALUES (%s, %s)", (school_id, name))
+            conn.commit()
+            class_id = cursor.lastrowid
+            cursor.execute("SELECT * FROM classes WHERE id=%s", (class_id,))
+            return cls.from_dict(cursor.fetchone())
 
 class School:
     def __init__(self, id, name, email=None, phone=None, password=None, created_at=None):

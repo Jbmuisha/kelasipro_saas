@@ -7,7 +7,8 @@ users_bp = Blueprint('users', __name__)
 @users_bp.route("/", methods=["GET"])
 def get_users():
     try:
-        users = User.get_all()  # Returns list of User instances
+        school_id = request.args.get("school_id")
+        users = User.get_all(school_id=school_id)  # Returns list of User instances
         print(f"[DEBUG] Fetched {len(users)} users")  # Debug
         users_json = [user.to_dict() for user in users]
         return jsonify({"users": users_json})
@@ -37,13 +38,18 @@ def create_user():
             email=data.get("email"),
             password=data.get("password"),
             role=data.get("role", "TEACHER"),
-            school_id=data.get("school_id")
+            school_id=data.get("school_id"),
+            class_id=data.get("class_id")
         )
         
-        # Handle profile image if provided
+        update_args = {}
         if "profile_image" in data and data["profile_image"]:
-            user.update(profile_image=data["profile_image"])
-            # Fetch the updated user to include the profile_image
+            update_args["profile_image"] = data["profile_image"]
+        if user.role == "PARENT" and "children_ids" in data:
+            update_args["children_ids"] = data["children_ids"]
+            
+        if update_args:
+            user.update(**update_args)
             user = User.get_by_id(user.id)
         
         print(f"[DEBUG] Created user: {user.to_dict()}")
@@ -61,14 +67,21 @@ def update_user(user_id):
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        user.update(
-            name=data.get("name"),
-            email=data.get("email"),
-            role=data.get("role"),
-            password=data.get("password"),
-            school_id=data.get("school_id"),
-            profile_image=data.get("profile_image")
-        )
+        update_args = {
+            "name": data.get("name"),
+            "email": data.get("email"),
+            "role": data.get("role"),
+            "password": data.get("password"),
+            "school_id": data.get("school_id"),
+            "profile_image": data.get("profile_image")
+        }
+        
+        if "class_id" in data:
+            update_args["class_id"] = data["class_id"]
+        if user.role == "PARENT" and "children_ids" in data:
+            update_args["children_ids"] = data["children_ids"]
+
+        user.update(**update_args)
         updated = User.get_by_id(user_id)
         print(f"[DEBUG] Updated user: {updated.to_dict()}")
         return jsonify(updated.to_dict())

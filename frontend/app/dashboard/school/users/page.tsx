@@ -26,14 +26,7 @@ type User = {
   unique_id?: string;
 };
 
-type School = {
-  id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-};
-
-export default function AdminUsersPage() {
+export default function SchoolUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -49,28 +42,20 @@ export default function AdminUsersPage() {
     profile_image: "",
   });
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [schools, setSchools] = useState<School[]>([]);
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    const userStr = localStorage.getItem("user");
+    if (userStr) {
+      setCurrentUser(JSON.parse(userStr));
+    }
+  }, []);
 
   // ================= SHOW TOAST =================
   const showToast = (message: string, type: string = "success") => {
     setToast({ show: true, message, type });
     setTimeout(() => setToast({ show: false, message: "", type: "success" }), 3000);
-  };
-
-  // ================= FETCH SCHOOLS =================
-  const fetchSchools = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/schools`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch schools");
-      }
-      const data = await response.json();
-      setSchools(data.schools || []);
-    } catch (err) {
-      console.error("Fetch schools error:", err);
-      setSchools([]);
-    }
   };
 
   // ================= RESET FORM =================
@@ -81,7 +66,7 @@ export default function AdminUsersPage() {
       email: "",
       role: "TEACHER",
       password: "",
-      school: "",
+      school: currentUser?.school_id || "",
       status: "active",
       profile_image: "",
     });
@@ -89,27 +74,18 @@ export default function AdminUsersPage() {
 
   // ================= FETCH USERS =================
   const fetchUsers = async () => {
+    if (!currentUser?.school_id) return;
+    
     setLoading(true);
     setError("");
     try {
-      console.log("Fetching users from:", `${API_URL}/api/users/`);
-      const response = await fetch(`${API_URL}/api/users/`);
-      console.log("Response status:", response.status);
-      console.log("Response ok:", response.ok);
+      const response = await fetch(`${API_URL}/api/users/?school_id=${currentUser.school_id}`);
       
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Response error:", errorText);
-        throw new Error(`Failed to fetch users: ${response.status} - ${errorText}`);
+        throw new Error(`Failed to fetch users: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log("Response data:", data);
-      
-      if (!data || !data.users) {
-        console.error("Invalid response structure:", data);
-        throw new Error("Invalid response from server");
-      }
       
       const transformedUsers = data.users.map((user: any) => ({
         id: user.id?.toString() || "",
@@ -124,7 +100,6 @@ export default function AdminUsersPage() {
           ? new Date(user.created_at).toLocaleDateString()
           : "",
       }));
-      console.log("Transformed users:", transformedUsers);
       setUsers(transformedUsers);
     } catch (err) {
       console.error("Fetch users error:", err);
@@ -139,23 +114,17 @@ export default function AdminUsersPage() {
   const handleUpdateUser = async () => {
     if (!editingUser) return;
     try {
-      console.log("Updating user:", editingUser);
       const response = await fetch(`${API_URL}/api/users/${editingUser.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...editingUser,
-          id: parseInt(editingUser.id) // Ensure ID is sent as number
+          id: parseInt(editingUser.id)
         }),
       });
       
-      console.log("Update response status:", response.status);
-      console.log("Update response ok:", response.ok);
-      
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Update response error:", errorText);
-        throw new Error(`Failed to update user: ${response.status} - ${errorText}`);
+        throw new Error(`Failed to update user`);
       }
       
       fetchUsers();
@@ -171,9 +140,6 @@ export default function AdminUsersPage() {
   // ================= CREATE =================
   const handleCreateUser = async () => {
     try {
-      console.log("Creating user with data:", formData);
-      
-      // Prepare the data to send to backend
       const requestData = {
         name: formData.name,
         email: formData.email,
@@ -181,11 +147,8 @@ export default function AdminUsersPage() {
         password: formData.password,
         status: formData.status,
         profile_image: formData.profile_image,
-        // Only include school if it's not SUPER_ADMIN
-        school_id: formData.role === "SUPER_ADMIN" ? null : formData.school
+        school_id: currentUser?.school_id
       };
-      
-      console.log("Sending request data:", requestData);
       
       const response = await fetch(`${API_URL}/api/users/`, {
         method: "POST",
@@ -193,30 +156,17 @@ export default function AdminUsersPage() {
         body: JSON.stringify(requestData),
       });
       
-      console.log("Create user response status:", response.status);
-      console.log("Create user response ok:", response.ok);
-      
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("Create user response error:", errorText);
-        
-        // Try to parse the error response to show a more user-friendly message
         let errorMessage = "Failed to create user";
         try {
           const errorData = JSON.parse(errorText);
-          if (errorData.error) {
-            errorMessage = errorData.error;
-          }
+          if (errorData.error) errorMessage = errorData.error;
         } catch (e) {
-          // If we can't parse as JSON, use the raw text
           errorMessage = errorText;
         }
-        
         throw new Error(errorMessage);
       }
-      
-      const result = await response.json();
-      console.log("Create user result:", result);
       
       fetchUsers();
       setShowModal(false);
@@ -260,9 +210,15 @@ export default function AdminUsersPage() {
   };
 
   useEffect(() => {
-    fetchUsers();
-    fetchSchools();
-  }, []);
+    if (currentUser?.school_id) {
+      fetchUsers();
+    }
+  }, [currentUser]);
+
+  // Define which roles the School Admin can manage (create/edit/delete)
+  const canManageRole = (role: string) => {
+    return ["TEACHER", "ASSISTANT", "SECRETARY"].includes(role);
+  };
 
   return (
     <div className="users-page">
@@ -271,7 +227,7 @@ export default function AdminUsersPage() {
         <h1>Users Management</h1>
         <div className="header-actions">
           <button className="btn-add" onClick={openCreateModal}>
-            + Add User
+            + Add Staff
           </button>
         </div>
       </div>
@@ -292,7 +248,6 @@ export default function AdminUsersPage() {
                 <th>Name</th>
                 <th>ID / Email</th>
                 <th>Role</th>
-                <th>School</th>
                 <th>Status</th>
                 <th>Created</th>
                 <th>Actions</th>
@@ -322,7 +277,6 @@ export default function AdminUsersPage() {
                       {user.role}
                     </span>
                   </td>
-                  <td>{user.school || "-"}</td>
                   <td>
                     <span className={`status-badge ${user.status}`}>
                       {user.status}
@@ -330,20 +284,24 @@ export default function AdminUsersPage() {
                   </td>
                   <td>{user.createdAt}</td>
                   <td>
-                    <div className="actions">
-                      <button
-                        className="btn-edit"
-                        onClick={() => openEditModal(user)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn-delete"
-                        onClick={() => handleDeleteUser(user.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
+                    {canManageRole(user.role) ? (
+                      <div className="actions">
+                        <button
+                          className="btn-edit"
+                          onClick={() => openEditModal(user)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn-delete"
+                          onClick={() => handleDeleteUser(user.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-muted">View Only</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -370,7 +328,7 @@ export default function AdminUsersPage() {
         <div className="modal-overlay">
           <div className="modal-content">
             <div className="modal-header">
-              <h2>{editingUser ? "Edit User" : "Create User"}</h2>
+              <h2>{editingUser ? "Edit Staff" : "Add Staff"}</h2>
               <button className="modal-close" onClick={() => setShowModal(false)}>
                 ×
               </button>
@@ -392,7 +350,7 @@ export default function AdminUsersPage() {
 
               {/* Email */}
               <div className="form-group">
-                <label>Email</label>
+                <label>Email (Optional)</label>
                 <input
                   value={editingUser ? editingUser.email : formData.email}
                   onChange={(e) =>
@@ -432,42 +390,11 @@ export default function AdminUsersPage() {
                     }
                   }}
                 >
-                  <option value="SUPER_ADMIN">Super Admin</option>
-                  <option value="SCHOOL_ADMIN">School Admin</option>
                   <option value="TEACHER">Teacher</option>
-                  <option value="STUDENT">Student</option>
-                  <option value="PARENT"> Parent</option>
+                  <option value="SECRETARY">Secretary</option>
+                  <option value="ASSISTANT">Assistant</option>
                 </select>
               </div>
-
-              {/* School - Only show for non-Super Admin roles */}
-              {(editingUser?.role !== "SUPER_ADMIN" && formData.role !== "SUPER_ADMIN") && (
-                <div className="form-group">
-                  <label>School</label>
-                  <select
-                    value={editingUser ? editingUser.school : formData.school}
-                    onChange={(e) => {
-                      const newSchool = e.target.value;
-                      if (editingUser) {
-                        setEditingUser({ ...editingUser, school: newSchool });
-                      } else {
-                        setFormData({ ...formData, school: newSchool });
-                      }
-                    }}
-                    required={formData.role !== "SUPER_ADMIN"}
-                  >
-                    <option value="">Select School</option>
-                    {schools.map((school) => (
-                      <option key={school.id} value={school.id}>
-                        {school.name}
-                      </option>
-                    ))}
-                  </select>
-                  <small className="form-hint">
-                    {formData.role === "SUPER_ADMIN" ? "Super Admin has access to all schools" : "Select the school for this user"}
-                  </small>
-                </div>
-              )}
 
               {/* Status */}
               <div className="form-group">

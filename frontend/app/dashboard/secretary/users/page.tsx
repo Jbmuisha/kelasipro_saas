@@ -19,21 +19,17 @@ type User = {
   email: string;
   role: string;
   school?: string;
+  class_id?: string;
   status?: string;
   createdAt?: string;
   password?: string;
   profile_image?: string;
   unique_id?: string;
+  children?: any[];
+  children_ids?: string[];
 };
 
-type School = {
-  id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-};
-
-export default function AdminUsersPage() {
+export default function SecretaryUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -42,35 +38,29 @@ export default function AdminUsersPage() {
     id: "",
     name: "",
     email: "",
-    role: "TEACHER",
+    role: "STUDENT",
     password: "",
     school: "",
     status: "active",
     profile_image: "",
   });
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [schools, setSchools] = useState<School[]>([]);
+  const [classes, setClasses] = useState<any[]>([]);
+  const [allStudents, setAllStudents] = useState<User[]>([]);
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    const userStr = localStorage.getItem("user");
+    if (userStr) {
+      setCurrentUser(JSON.parse(userStr));
+    }
+  }, []);
 
   // ================= SHOW TOAST =================
   const showToast = (message: string, type: string = "success") => {
     setToast({ show: true, message, type });
     setTimeout(() => setToast({ show: false, message: "", type: "success" }), 3000);
-  };
-
-  // ================= FETCH SCHOOLS =================
-  const fetchSchools = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/schools`);
-      if (!response.ok) {
-        throw new Error("Failed to fetch schools");
-      }
-      const data = await response.json();
-      setSchools(data.schools || []);
-    } catch (err) {
-      console.error("Fetch schools error:", err);
-      setSchools([]);
-    }
   };
 
   // ================= RESET FORM =================
@@ -79,37 +69,44 @@ export default function AdminUsersPage() {
       id: "",
       name: "",
       email: "",
-      role: "TEACHER",
+      role: "STUDENT",
       password: "",
-      school: "",
+      school: currentUser?.school_id || "",
       status: "active",
       profile_image: "",
+      class_id: "",
+      children_ids: [],
     });
+  };
+
+  // ================= FETCH CLASSES =================
+  const fetchClasses = async () => {
+    if (!currentUser?.school_id) return;
+    try {
+      const response = await fetch(`${API_URL}/api/classes/?school_id=${currentUser.school_id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setClasses(data.classes || []);
+      }
+    } catch (err) {
+      console.error("Fetch classes error:", err);
+    }
   };
 
   // ================= FETCH USERS =================
   const fetchUsers = async () => {
+    if (!currentUser?.school_id) return;
+    
     setLoading(true);
     setError("");
     try {
-      console.log("Fetching users from:", `${API_URL}/api/users/`);
-      const response = await fetch(`${API_URL}/api/users/`);
-      console.log("Response status:", response.status);
-      console.log("Response ok:", response.ok);
+      const response = await fetch(`${API_URL}/api/users/?school_id=${currentUser.school_id}`);
       
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Response error:", errorText);
-        throw new Error(`Failed to fetch users: ${response.status} - ${errorText}`);
+        throw new Error(`Failed to fetch users: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log("Response data:", data);
-      
-      if (!data || !data.users) {
-        console.error("Invalid response structure:", data);
-        throw new Error("Invalid response from server");
-      }
       
       const transformedUsers = data.users.map((user: any) => ({
         id: user.id?.toString() || "",
@@ -118,14 +115,17 @@ export default function AdminUsersPage() {
         role: user.role || "",
         status: user.status || "active",
         school: user.school_id || "",
+        class_id: user.class_id?.toString() || "",
         profile_image: user.profile_image || "",
         unique_id: user.unique_id || "",
+        children: user.children || [],
+        children_ids: user.children?.map((c: any) => c.id.toString()) || [],
         createdAt: user.created_at
           ? new Date(user.created_at).toLocaleDateString()
           : "",
       }));
-      console.log("Transformed users:", transformedUsers);
       setUsers(transformedUsers);
+      setAllStudents(transformedUsers.filter((u: User) => u.role === "STUDENT"));
     } catch (err) {
       console.error("Fetch users error:", err);
       setError("Could not load users.");
@@ -139,23 +139,17 @@ export default function AdminUsersPage() {
   const handleUpdateUser = async () => {
     if (!editingUser) return;
     try {
-      console.log("Updating user:", editingUser);
       const response = await fetch(`${API_URL}/api/users/${editingUser.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...editingUser,
-          id: parseInt(editingUser.id) // Ensure ID is sent as number
+          id: parseInt(editingUser.id)
         }),
       });
       
-      console.log("Update response status:", response.status);
-      console.log("Update response ok:", response.ok);
-      
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Update response error:", errorText);
-        throw new Error(`Failed to update user: ${response.status} - ${errorText}`);
+        throw new Error(`Failed to update user`);
       }
       
       fetchUsers();
@@ -171,21 +165,27 @@ export default function AdminUsersPage() {
   // ================= CREATE =================
   const handleCreateUser = async () => {
     try {
-      console.log("Creating user with data:", formData);
-      
-      // Prepare the data to send to backend
-      const requestData = {
+      const requestData: any = {
         name: formData.name,
         email: formData.email,
         role: formData.role,
         password: formData.password,
         status: formData.status,
         profile_image: formData.profile_image,
-        // Only include school if it's not SUPER_ADMIN
-        school_id: formData.role === "SUPER_ADMIN" ? null : formData.school
+        school_id: currentUser?.school_id
       };
+
+      if (formData.role === "STUDENT") {
+        if (!formData.class_id) {
+          showToast("Please select a class for the student.", "error");
+          return;
+        }
+        requestData.class_id = formData.class_id;
+      }
       
-      console.log("Sending request data:", requestData);
+      if (formData.role === "PARENT" && formData.children_ids) {
+        requestData.children_ids = formData.children_ids;
+      }
       
       const response = await fetch(`${API_URL}/api/users/`, {
         method: "POST",
@@ -193,30 +193,17 @@ export default function AdminUsersPage() {
         body: JSON.stringify(requestData),
       });
       
-      console.log("Create user response status:", response.status);
-      console.log("Create user response ok:", response.ok);
-      
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("Create user response error:", errorText);
-        
-        // Try to parse the error response to show a more user-friendly message
         let errorMessage = "Failed to create user";
         try {
           const errorData = JSON.parse(errorText);
-          if (errorData.error) {
-            errorMessage = errorData.error;
-          }
+          if (errorData.error) errorMessage = errorData.error;
         } catch (e) {
-          // If we can't parse as JSON, use the raw text
           errorMessage = errorText;
         }
-        
         throw new Error(errorMessage);
       }
-      
-      const result = await response.json();
-      console.log("Create user result:", result);
       
       fetchUsers();
       setShowModal(false);
@@ -260,18 +247,25 @@ export default function AdminUsersPage() {
   };
 
   useEffect(() => {
-    fetchUsers();
-    fetchSchools();
-  }, []);
+    if (currentUser?.school_id) {
+      fetchUsers();
+      fetchClasses();
+    }
+  }, [currentUser]);
+
+  // Define which roles the Secretary can manage (create/edit/delete)
+  const canManageRole = (role: string) => {
+    return ["STUDENT", "PARENT"].includes(role);
+  };
 
   return (
     <div className="users-page">
       {/* HEADER */}
       <div className="page-header">
-        <h1>Users Management</h1>
+        <h1>All Users Management</h1>
         <div className="header-actions">
           <button className="btn-add" onClick={openCreateModal}>
-            + Add User
+            + Add Student/Parent
           </button>
         </div>
       </div>
@@ -292,7 +286,6 @@ export default function AdminUsersPage() {
                 <th>Name</th>
                 <th>ID / Email</th>
                 <th>Role</th>
-                <th>School</th>
                 <th>Status</th>
                 <th>Created</th>
                 <th>Actions</th>
@@ -321,8 +314,17 @@ export default function AdminUsersPage() {
                     <span className={`role-badge ${user.role}`}>
                       {user.role}
                     </span>
+                    {user.role === "STUDENT" && user.class_id && (
+                      <div style={{ fontSize: '0.85em', marginTop: '4px', color: '#666' }}>
+                        Class: {classes.find(c => c.id.toString() === user.class_id)?.name || 'Unknown'}
+                      </div>
+                    )}
+                    {user.role === "PARENT" && user.children && user.children.length > 0 && (
+                      <div style={{ fontSize: '0.85em', marginTop: '4px', color: '#666' }}>
+                        Children: {user.children.map((c: any) => c.name).join(', ')}
+                      </div>
+                    )}
                   </td>
-                  <td>{user.school || "-"}</td>
                   <td>
                     <span className={`status-badge ${user.status}`}>
                       {user.status}
@@ -330,20 +332,24 @@ export default function AdminUsersPage() {
                   </td>
                   <td>{user.createdAt}</td>
                   <td>
-                    <div className="actions">
-                      <button
-                        className="btn-edit"
-                        onClick={() => openEditModal(user)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn-delete"
-                        onClick={() => handleDeleteUser(user.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
+                    {canManageRole(user.role) ? (
+                      <div className="actions">
+                        <button
+                          className="btn-edit"
+                          onClick={() => openEditModal(user)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn-delete"
+                          onClick={() => handleDeleteUser(user.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-muted">View Only</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -370,7 +376,7 @@ export default function AdminUsersPage() {
         <div className="modal-overlay">
           <div className="modal-content">
             <div className="modal-header">
-              <h2>{editingUser ? "Edit User" : "Create User"}</h2>
+              <h2>{editingUser ? "Edit User" : "Add Student/Parent"}</h2>
               <button className="modal-close" onClick={() => setShowModal(false)}>
                 ×
               </button>
@@ -392,7 +398,7 @@ export default function AdminUsersPage() {
 
               {/* Email */}
               <div className="form-group">
-                <label>Email</label>
+                <label>Email (Optional for Students/Parents)</label>
                 <input
                   value={editingUser ? editingUser.email : formData.email}
                   onChange={(e) =>
@@ -431,41 +437,57 @@ export default function AdminUsersPage() {
                       setFormData({ ...formData, role: newRole });
                     }
                   }}
+                  disabled={!!editingUser} // Disallow role change on edit for simplicity
                 >
-                  <option value="SUPER_ADMIN">Super Admin</option>
-                  <option value="SCHOOL_ADMIN">School Admin</option>
-                  <option value="TEACHER">Teacher</option>
                   <option value="STUDENT">Student</option>
-                  <option value="PARENT"> Parent</option>
+                  <option value="PARENT">Parent</option>
                 </select>
               </div>
 
-              {/* School - Only show for non-Super Admin roles */}
-              {(editingUser?.role !== "SUPER_ADMIN" && formData.role !== "SUPER_ADMIN") && (
+              {/* Class Selection for Student */}
+              {(editingUser ? editingUser.role : formData.role) === "STUDENT" && (
                 <div className="form-group">
-                  <label>School</label>
+                  <label>Class</label>
                   <select
-                    value={editingUser ? editingUser.school : formData.school}
+                    value={editingUser ? editingUser.class_id || "" : formData.class_id || ""}
                     onChange={(e) => {
-                      const newSchool = e.target.value;
                       if (editingUser) {
-                        setEditingUser({ ...editingUser, school: newSchool });
+                        setEditingUser({ ...editingUser, class_id: e.target.value });
                       } else {
-                        setFormData({ ...formData, school: newSchool });
+                        setFormData({ ...formData, class_id: e.target.value });
                       }
                     }}
-                    required={formData.role !== "SUPER_ADMIN"}
                   >
-                    <option value="">Select School</option>
-                    {schools.map((school) => (
-                      <option key={school.id} value={school.id}>
-                        {school.name}
-                      </option>
+                    <option value="">Select a Class</option>
+                    {classes.map((cls) => (
+                      <option key={cls.id} value={cls.id}>{cls.name}</option>
                     ))}
                   </select>
-                  <small className="form-hint">
-                    {formData.role === "SUPER_ADMIN" ? "Super Admin has access to all schools" : "Select the school for this user"}
-                  </small>
+                </div>
+              )}
+
+              {/* Children Selection for Parent */}
+              {(editingUser ? editingUser.role : formData.role) === "PARENT" && (
+                <div className="form-group">
+                  <label>Children (Students)</label>
+                  <select
+                    multiple
+                    value={editingUser ? editingUser.children_ids || [] : formData.children_ids || []}
+                    onChange={(e) => {
+                      const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
+                      if (editingUser) {
+                        setEditingUser({ ...editingUser, children_ids: selectedOptions });
+                      } else {
+                        setFormData({ ...formData, children_ids: selectedOptions });
+                      }
+                    }}
+                    style={{ height: '100px' }}
+                  >
+                    {allStudents.map((student) => (
+                      <option key={student.id} value={student.id}>{student.name}</option>
+                    ))}
+                  </select>
+                  <small className="form-hint">Hold Ctrl (Windows) or Cmd (Mac) to select multiple students.</small>
                 </div>
               )}
 

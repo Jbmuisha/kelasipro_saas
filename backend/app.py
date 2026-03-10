@@ -3,6 +3,7 @@ from flask_cors import CORS
 from routes.auth import auth_bp
 from routes.users import users_bp
 from routes.schools import schools_bp
+from routes.classes import classes_bp
 from utils.create_super_admin import create_super_admin
 
 app = Flask(__name__)
@@ -18,6 +19,7 @@ create_super_admin()
 app.register_blueprint(auth_bp, url_prefix="/api/auth")
 app.register_blueprint(users_bp, url_prefix="/api/users")
 app.register_blueprint(schools_bp, url_prefix="/api/schools")
+app.register_blueprint(classes_bp, url_prefix="/api/classes")
 
 # ------------------- Test Route -------------------
 @app.route('/test')

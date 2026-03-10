@@ -1,0 +1,22 @@
+Name: Test User, Role: SUPER_ADMIN, School: None
+Name: Another User, Role: TEACHER, School: None
+Name: Super Admin, Role: SUPER_ADMIN, School: None
+Name: jboyGolden, Role: SUPER_ADMIN, School: None
+Name: Test User, Role: TEACHER, School: None
+Name: Test User, Role: TEACHER, School: None
+Name: Test User, Role: TEACHER, School: None
+Name: Test User, Role: TEACHER, School: None
+Name: Test User, Role: TEACHER, School: None
+Name: TestUser101, Role: TEACHER, School: None
+Name: ALICE, Role: TEACHER, School: None
+Name: Test User with Image, Role: TEACHER, School: None
+Name: TESTuser, Role: TEACHER, School: None
+Name: Test Schools Admin, Role: SCHOOL_ADMIN, School: 1
+Name: Test User, Role: SCHOOL_ADMIN, School: 1
+Name: alisa, Role: SCHOOL_ADMIN, School: 8
+Name: dorc, Role: SCHOOL_ADMIN, School: 1
+Name: gohy, Role: SCHOOL_ADMIN, School: 2
+Name: john, Role: TEACHER, School: 2
+Name: ali, Role: STUDENT, School: 2
+Name: prince, Role: SCHOOL_ADMIN, School: 11
+Name: wali, Role: SECRETARY, School: None

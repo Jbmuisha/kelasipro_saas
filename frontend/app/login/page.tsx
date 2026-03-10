@@ -15,9 +15,9 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
 
-    // Vérifie que l'email est Gmail
-    if (!email.endsWith("@gmail.com")) {
-      setError("Vous devez utiliser une adresse Gmail pour vous connecter.");
+    // Vérifie que l'email est Gmail si c'est un email
+    if (email.includes("@") && !email.endsWith("@gmail.com")) {
+      setError("Vous devez utiliser une adresse Gmail pour vous connecter avec un email.");
       return;
     }
 
@@ -44,6 +44,7 @@ export default function LoginPage() {
       } else {
         // Stocke le token dans localStorage
         localStorage.setItem("token", data.token);
+        localStorage.setItem("user", JSON.stringify(data.user));
         console.log(`[LOGIN SUCCESS] User logged in: ${email}`);
 
         // Redirection selon le rôle
@@ -59,6 +60,15 @@ export default function LoginPage() {
             break;
           case "STUDENT":
             router.push("/dashboard/student");
+            break;
+          case "SECRETARY":
+            router.push("/dashboard/secretary");
+            break;
+          case "PARENT":
+            router.push("/dashboard/parent");
+            break;
+          case "ASSISTANT":
+            router.push("/dashboard/assistant");
             break;
           default:
             router.push("/");
@@ -78,8 +88,8 @@ export default function LoginPage() {
         <h1>KelasiPro Login</h1>
         <form onSubmit={handleLogin}>
           <input
-            type="email"
-            placeholder="Email"
+            type="text"
+            placeholder="Email ou ID (ex: 2026xxxx)"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required

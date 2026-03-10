@@ -1,0 +1,22 @@
+Name: Test User, Role: SUPER_ADMIN, Email: testuser@gmail.com, Unique_ID: None
+Name: Another User, Role: TEACHER, Email: anotheruser@gmail.com, Unique_ID: 2026630
+Name: Super Admin, Role: SUPER_ADMIN, Email: superadmin@gmail.com, Unique_ID: None
+Name: jboyGolden, Role: SUPER_ADMIN, Email: jbmuisha@gmail.com, Unique_ID: None
+Name: Test User, Role: TEACHER, Email: unique@example.com, Unique_ID: 2026836
+Name: Test User, Role: TEACHER, Email: unique5@example.com, Unique_ID: 2026856
+Name: Test User, Role: TEACHER, Email: unique6@example.com, Unique_ID: 2026973
+Name: Test User, Role: TEACHER, Email: unique7@example.com, Unique_ID: 2026027
+Name: Test User, Role: TEACHER, Email: unique9@example.com, Unique_ID: 2026230
+Name: TestUser101, Role: TEACHER, Email: unique10@example.com, Unique_ID: 2026004
+Name: ALICE, Role: TEACHER, Email: jboygolden82@gmail.com, Unique_ID: 2026249
+Name: Test User with Image, Role: TEACHER, Email: testimage@example.com, Unique_ID: 2026379
+Name: TESTuser, Role: TEACHER, Email: testimage2@example.com, Unique_ID: 2026822
+Name: Test Schools Admin, Role: SCHOOL_ADMIN, Email: testadmin@gmail.com, Unique_ID: None
+Name: Test User, Role: SCHOOL_ADMIN, Email: test@example.com, Unique_ID: None
+Name: alisa, Role: SCHOOL_ADMIN, Email: alisa@gmail.com, Unique_ID: None
+Name: dorc, Role: SCHOOL_ADMIN, Email: dorc@gmail.com, Unique_ID: None
+Name: gohy, Role: SCHOOL_ADMIN, Email: gohy@gmail.com, Unique_ID: None
+Name: john, Role: TEACHER, Email: jh@gmail.com, Unique_ID: 2026898
+Name: ali, Role: STUDENT, Email: al#@gmail.com, Unique_ID: 2026555
+Name: prince, Role: SCHOOL_ADMIN, Email: princece@gmail.com, Unique_ID: None
+Name: wali, Role: SECRETARY, Email: w@gmail.com, Unique_ID: 2026016

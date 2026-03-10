@@ -15,7 +15,7 @@ import {
   FaTimes,
 } from "react-icons/fa";
 import { useState, useEffect } from "react";
-import "./school.css";
+import "./secretary.css";
 
 /* ---------------- Translation System ---------------- */
 
@@ -111,7 +111,7 @@ function useIsMobile(breakpoint = 768) {
 
 /* ---------------- Component ---------------- */
 
-export default function SchoolLayout({
+export default function SecretaryLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -124,10 +124,10 @@ export default function SchoolLayout({
   const isMobile = useIsMobile();
 
   const menu = [
-    { name: t.dashboard, href: "/dashboard/school", icon: <FaTachometerAlt /> },
-    { name: "All Users", href: "/dashboard/school/users", icon: <FaChalkboardTeacher /> },
-    { name: t.classes, href: "/dashboard/school/classes", icon: <FaSchool /> },
-    { name: t.settings, href: "/dashboard/school/settings", icon: <FaCog /> },
+    { name: t.dashboard, href: "/dashboard/secretary", icon: <FaTachometerAlt /> },
+    { name: "All Users", href: "/dashboard/secretary/users", icon: <FaChalkboardTeacher /> },
+    { name: t.classes, href: "/dashboard/secretary/classes", icon: <FaSchool /> },
+    { name: t.settings, href: "/dashboard/secretary/settings", icon: <FaCog /> },
   ];
 
   return (
@@ -140,7 +140,7 @@ export default function SchoolLayout({
       {/* Sidebar */}
       <aside className="school-sidebar">
         <div className="school-logo">
-          📚 SP!K <span>School Admin</span>
+          📚 SP!K <span>Secretary</span>
         </div>
 
         {isMobile && (
@@ -179,7 +179,7 @@ export default function SchoolLayout({
           <div className="topbar-left">
             {!sidebarOpen && (
               <div className="school-logo" style={{ fontSize: '18px', marginBottom: '0', marginRight: '20px' }}>
-                📚 SP!K <span style={{ fontSize: '11px' }}>School Admin</span>
+                📚 SP!K <span style={{ fontSize: '11px' }}>Secretary</span>
               </div>
             )}
             {!isMobile && (
@@ -213,8 +213,8 @@ export default function SchoolLayout({
                 className="avatar"
               />
               <div className="profile-info">
-                <strong>School Admin</strong>
-                <p>{t.schoolAdmin}</p>
+                <strong>Secretary</strong>
+                <p>Secretary</p>
               </div>
             </div>
           </div>
