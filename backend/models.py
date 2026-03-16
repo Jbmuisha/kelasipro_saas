@@ -5,7 +5,7 @@ from datetime import datetime
 
 class User:
     def __init__(self, id, name, email, role, created_at=None,
-                 school_id=None, status=None, profile_image=None, class_id=None, unique_id=None):
+                 school_id=None, status=None, profile_image=None, class_id=None, unique_id=None, created_by=None):
         self.id = id
         self.name = name
         self.email = email
@@ -16,6 +16,7 @@ class User:
         self.profile_image = profile_image
         self.class_id = class_id
         self.unique_id = unique_id
+        self.created_by = created_by
         self.children = [] # For parents
         self.parents = [] # For students
 
@@ -32,7 +33,8 @@ class User:
             status=data.get('status'),
             profile_image=data.get('profile_image'),
             class_id=data.get('class_id'),
-            unique_id=data.get('unique_id')
+            unique_id=data.get('unique_id'),
+            created_by=data.get('created_by')
         )
         if 'children' in data:
             user.children = data['children']
@@ -58,42 +60,108 @@ class User:
             'profile_image': self.profile_image,
             'password': self.password.decode() if hasattr(self, 'password') and isinstance(self.password, bytes) else (self.password if hasattr(self, 'password') else None),
             'children': self.children,
-            'parents': self.parents
+            'parents': self.parents,
+            'created_by': self.created_by if hasattr(self, 'created_by') else None
         }
 
     @classmethod
-    def get_all(cls, include_super_admin=True, school_id=None):
-        """Get all users from database"""
-        conn = get_connection()
-        with conn.cursor() as cursor:
-            query = "SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id FROM users WHERE 1=1"
-            params = []
-            if not include_super_admin:
-                query += " AND role != 'SUPER_ADMIN'"
-            if school_id:
-                query += " AND school_id = %s"
-                params.append(school_id)
-            query += " ORDER BY created_at DESC"
-            cursor.execute(query, tuple(params))
-            users_data = cursor.fetchall()
-            
-            # Fetch relations
-            cursor.execute("SELECT parent_id, student_id FROM parent_student")
-            relations = cursor.fetchall()
-            
-            students_map = {u['id']: u for u in users_data if u['role'] == 'STUDENT'}
-            
-            for u in users_data:
-                if u['role'] == 'PARENT':
-                    u['children'] = []
-                    for r in relations:
-                        if r['parent_id'] == u['id'] and r['student_id'] in students_map:
-                            u['children'].append({
-                                'id': students_map[r['student_id']]['id'],
-                                'name': students_map[r['student_id']]['name']
-                            })
-                            
-        return [cls.from_dict(u) for u in users_data]
+    def get_all(cls, include_super_admin=True, school_id=None, requester_id=None, requester_role=None):
+        """Get all users from database. If requester is SECRETARY, limit results to students and parents they created or parents of their students."""
+        try:
+            conn = get_connection()
+            with conn.cursor() as cursor:
+                params = []
+                # Base query
+                query = "SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, created_by FROM users WHERE 1=1"
+
+                if not include_super_admin:
+                    query += " AND role != 'SUPER_ADMIN'"
+                if school_id:
+                    query += " AND school_id = %s"
+                    params.append(school_id)
+
+                # If requester is SECRETARY, restrict
+                # If requester is SECRETARY or SCHOOL_ADMIN, restrict to users they created (and for SECRETARY also parents of their students)
+                if requester_role in ('SECRETARY', 'SCHOOL_ADMIN') and requester_id:
+                    # Ensure created_by column exists
+                    cursor.execute("SHOW COLUMNS FROM users LIKE 'created_by'")
+                    if not cursor.fetchone():
+                        print("[ERROR] get_all: 'created_by' column missing. Add it with: ALTER TABLE users ADD COLUMN created_by INT NULL")
+                        return []
+
+                    if requester_role == 'SCHOOL_ADMIN':
+                        # School admin should see all users for their school via school_users mapping
+                        # Ensure school_users table exists
+                        cursor.execute("SHOW TABLES LIKE 'school_users'")
+                        if cursor.fetchone():
+                            # Use school_id parameter to fetch members
+                            if not school_id:
+                                # if no school_id provided fall back to created_by behavior
+                                cursor.execute("SELECT id FROM users WHERE created_by=%s", (requester_id,))
+                                rows = cursor.fetchall()
+                                allowed_ids = [r['id'] for r in rows]
+                            else:
+                                cursor.execute("SELECT user_id FROM school_users WHERE school_id=%s", (school_id,))
+                                rows = cursor.fetchall()
+                                allowed_ids = [r['user_id'] for r in rows]
+                        else:
+                            # fallback: if mapping table missing, fall back to created_by behavior
+                            cursor.execute("SELECT id FROM users WHERE created_by=%s", (requester_id,))
+                            rows = cursor.fetchall()
+                            allowed_ids = [r['id'] for r in rows]
+                    else:
+                        # SECRETARY: Return students created by this secretary and parents created by this secretary or parents of those students
+                        cursor.execute("SELECT id FROM users WHERE role='STUDENT' AND created_by=%s", (requester_id,))
+                        student_rows = cursor.fetchall()
+                        student_ids = [r['id'] for r in student_rows]
+
+                        # Get parent ids who were created by requester
+                        cursor.execute("SELECT id FROM users WHERE role='PARENT' AND created_by=%s", (requester_id,))
+                        parent_rows = cursor.fetchall()
+                        parent_ids = [r['id'] for r in parent_rows]
+
+                        # Get parents linked to those students
+                        if student_ids:
+                            format_ids = ','.join(['%s'] * len(student_ids))
+                            cursor.execute(f"SELECT parent_id FROM parent_student WHERE student_id IN ({format_ids})", tuple(student_ids))
+                            linked_parents = cursor.fetchall()
+                            parent_ids += [r['parent_id'] for r in linked_parents]
+
+                        allowed_ids = student_ids + parent_ids
+
+                    if not allowed_ids:
+                        return []
+                    format_allowed = ','.join(['%s'] * len(allowed_ids))
+                    query = f"SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, created_by FROM users WHERE id IN ({format_allowed})"
+                    cursor.execute(query, tuple(allowed_ids))
+                    users_data = cursor.fetchall()
+                else:
+                    query += " ORDER BY created_at DESC"
+                    cursor.execute(query, tuple(params))
+                    users_data = cursor.fetchall()
+
+                # Fetch relations
+                cursor.execute("SELECT parent_id, student_id FROM parent_student")
+                relations = cursor.fetchall()
+
+                students_map = {u['id']: u for u in users_data if u['role'] == 'STUDENT'}
+
+                for u in users_data:
+                    if u['role'] == 'PARENT':
+                        u['children'] = []
+                        for r in relations:
+                            if r['parent_id'] == u['id'] and r['student_id'] in students_map:
+                                u['children'].append({
+                                    'id': students_map[r['student_id']]['id'],
+                                    'name': students_map[r['student_id']]['name']
+                                })
+
+            return [cls.from_dict(u) for u in users_data]
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"[ERROR] get_all: {e}")
+            return []
 
     @classmethod
     def get_by_id(cls, user_id):
@@ -130,14 +198,14 @@ class User:
         return None
 
     @classmethod
-    def create(cls, name, email=None, password=None, role="USER", school_id=None, class_id=None):
-        """Create a new user"""
+    def create(cls, name, email=None, password=None, role="USER", school_id=None, class_id=None, created_by=None):
+        """Create a new user. Optionally record who created the user in created_by column (if present)."""
         import random
-        
+
         # Convert empty string to None
         if not email:
             email = None
-            
+
         conn = get_connection()
         with conn.cursor() as cursor:
             # Check if email already exists
@@ -161,12 +229,30 @@ class User:
                     if not cursor.fetchone():
                         break
 
-            cursor.execute(
-                "INSERT INTO users (name, email, password, role, school_id, class_id, unique_id) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                (name, email, hashed_password, role, school_id, class_id, unique_id)
-            )
+            # Build insert dynamically if created_by provided
+            if created_by is not None:
+                cursor.execute(
+                    "INSERT INTO users (name, email, password, role, school_id, class_id, unique_id, created_by) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                    (name, email, hashed_password, role, school_id, class_id, unique_id, created_by)
+                )
+            else:
+                cursor.execute(
+                    "INSERT INTO users (name, email, password, role, school_id, class_id, unique_id) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (name, email, hashed_password, role, school_id, class_id, unique_id)
+                )
+
             conn.commit()
-            return cls.get_by_id(cursor.lastrowid)
+            new_user_id = cursor.lastrowid
+
+            # Map user to school in school_users (migration must exist)
+            try:
+                cursor.execute("INSERT IGNORE INTO school_users (school_id, user_id, role, created_by, created_at) VALUES (%s, %s, %s, %s, NOW())", (school_id, new_user_id, role, created_by))
+                conn.commit()
+            except Exception:
+                # ignore if table missing or migration not run
+                pass
+
+            return cls.get_by_id(new_user_id)
 
     def update(self, name=None, email=None, role=None, school_id=None, password=None, profile_image=None, class_id=None, children_ids=None):
         """Update an existing user"""

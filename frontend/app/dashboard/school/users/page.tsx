@@ -79,7 +79,7 @@ export default function SchoolUsersPage() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`${API_URL}/api/users/?school_id=${currentUser.school_id}`);
+      const response = await fetch(`${API_URL}/api/users/?school_id=${currentUser.school_id}&requester_id=${currentUser.id}&requester_role=${currentUser.role}`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch users: ${response.status}`);
@@ -153,7 +153,7 @@ export default function SchoolUsersPage() {
       const response = await fetch(`${API_URL}/api/users/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestData),
+        body: JSON.stringify({ ...requestData, requester_id: currentUser?.id, requester_role: currentUser?.role }),
       });
       
       if (!response.ok) {

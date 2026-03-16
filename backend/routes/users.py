@@ -8,7 +8,9 @@ users_bp = Blueprint('users', __name__)
 def get_users():
     try:
         school_id = request.args.get("school_id")
-        users = User.get_all(school_id=school_id)  # Returns list of User instances
+        requester_id = request.args.get("requester_id")
+        requester_role = request.args.get("requester_role")
+        users = User.get_all(school_id=school_id, requester_id=requester_id, requester_role=requester_role)  # Returns list of User instances
         print(f"[DEBUG] Fetched {len(users)} users")  # Debug
         users_json = [user.to_dict() for user in users]
         return jsonify({"users": users_json})
@@ -33,13 +35,15 @@ def get_user(user_id):
 def create_user():
     data = request.json
     try:
+        requester_id = data.get("requester_id")
         user = User.create(
             name=data.get("name"),
             email=data.get("email"),
             password=data.get("password"),
             role=data.get("role", "TEACHER"),
             school_id=data.get("school_id"),
-            class_id=data.get("class_id")
+            class_id=data.get("class_id"),
+            created_by=requester_id
         )
         
         update_args = {}
