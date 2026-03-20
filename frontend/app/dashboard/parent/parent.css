@@ -285,7 +285,7 @@
     color: #333;
   }
   
-  /* Mobile */
+  
   @media (max-width: 768px) {
     .parent-topbar {
       padding: 0 15px;

@@ -120,11 +120,10 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
         <div className="school-type-select">
           {sidebarOpen && (
             <select value={schoolType} onChange={(e) => setSchoolType(e.target.value)} className="school-type-input">
-              <option value="primaire">Primaire (classique)</option>
-              <option value="secondaire">Secondaire (classique)</option>
-              <option value="cycle_fondamental">Cycle fondamental (RDC)</option>
-              <option value="humanites">Humanités (RDC)</option>
-              <option value="maternelle">Maternelle</option>
+            <option value="maternelle">Maternelle</option>
+            <option value="primaire">École primaire</option>
+            <option value="secondaire">École secondaire</option>
+           
             </select>
           )}
         </div>
