@@ -44,10 +44,11 @@ def create_school():
     data = request.json
     try:
         school = School.create(
-            name=data.get("name"),
-            email=data.get("email"),
-            phone=data.get("phone"),
-            password=data.get("password")
+        name=data.get("name"),
+        email=data.get("email"),
+        phone=data.get("phone"),
+        password=data.get("password"),
+        school_type=data.get("school_type")
         )
         print(f"[DEBUG] Created school: {school.to_dict()}")
         return jsonify(school.to_dict())
@@ -65,10 +66,11 @@ def update_school(school_id):
             return jsonify({"error": "School not found"}), 404
 
         school.update(
-            name=data.get("name"),
-            email=data.get("email"),
-            phone=data.get("phone"),
-            password=data.get("password")
+        name=data.get("name"),
+        email=data.get("email"),
+        phone=data.get("phone"),
+        password=data.get("password"),
+        school_type=data.get("school_type")
         )
         updated = School.get_by_id(school_id)
         print(f"[DEBUG] Updated school: {updated.to_dict()}")

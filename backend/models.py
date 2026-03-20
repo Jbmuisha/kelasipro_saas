@@ -360,14 +360,49 @@ class ClassModel:
             cursor.execute("SELECT * FROM classes WHERE id=%s", (class_id,))
             return cls.from_dict(cursor.fetchone())
 
+
+# Helper utilities for school types and allowed classes
+PRIMAIRE_CLASSES = [
+    "1ere primaire",
+    "2eme primaire",
+    "3eme primaire",
+    "4eme primaire",
+    "5eme primaire",
+    "6eme primaire",
+]
+
+SECONDAIRE_CLASSES = [
+    # Cycle inférieur (tronc commun)
+    "1ere secondaire",
+    "2eme secondaire",
+    # Cycle supérieur
+    "3eme secondaire",
+    "4eme secondaire",
+    "5eme secondaire",
+    "6eme secondaire",
+]
+
+
+def get_allowed_class_names(school_type):
+    """Return allowed base class names for a given school_type ("primaire" or "secondaire")."""
+    if not school_type:
+        return []
+    if school_type.lower() == 'primaire' or school_type.lower() == 'primaire'.upper():
+        return PRIMAIRE_CLASSES
+    if school_type.lower() == 'secondaire' or school_type.lower() == 'secondaire'.upper():
+        return SECONDAIRE_CLASSES
+    return []
+
+
 class School:
-    def __init__(self, id, name, email=None, phone=None, password=None, created_at=None):
+    def __init__(self, id, name, email=None, phone=None, password=None, created_at=None, school_type=None):
         self.id = id
         self.name = name
         self.email = email
         self.phone = phone
         self.password = password
         self.created_at = created_at
+        self.school_type = school_type
 
     @classmethod
     def from_dict(cls, data):
@@ -377,7 +412,8 @@ class School:
             email=data.get('email'),
             phone=data.get('phone'),
             password=data.get('password'),
-            created_at=data.get('created_at')
+            created_at=data.get('created_at'),
+            school_type=data.get('school_type')
         )
 
     def to_dict(self):
@@ -387,14 +423,15 @@ class School:
             'email': self.email,
             'phone': self.phone,
             'password': self.password.decode() if isinstance(self.password, bytes) else self.password,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'school_type': self.school_type
         }
 
     @classmethod
     def get_all(cls):
         conn = get_connection()
         with conn.cursor() as cursor:
-            cursor.execute("SELECT id, name, email, phone, password, created_at FROM schools ORDER BY created_at DESC")
+            cursor.execute("SELECT id, name, email, phone, password, created_at, school_type FROM schools ORDER BY created_at DESC")
             data = cursor.fetchall()
         return [cls.from_dict(d) for d in data]
 
@@ -402,27 +439,27 @@ class School:
     def get_by_id(cls, school_id):
         conn = get_connection()
         with conn.cursor() as cursor:
-            cursor.execute("SELECT id, name, email, phone, password, created_at FROM schools WHERE id=%s", (school_id,))
+            cursor.execute("SELECT id, name, email, phone, password, created_at, school_type FROM schools WHERE id=%s", (school_id,))
             data = cursor.fetchone()
         if data:
             return cls.from_dict(data)
         return None
 
     @classmethod
-    def create(cls, name, email=None, phone=None, password=None):
+    def create(cls, name, email=None, phone=None, password=None, school_type=None):
         conn = get_connection()
         with conn.cursor() as cursor:
             # Hash password if provided
             hashed_password = None
             if password:
                 hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-            
-            cursor.execute("INSERT INTO schools (name, email, phone, password) VALUES (%s, %s, %s, %s)", 
-                          (name, email, phone, hashed_password))
+
+            cursor.execute("INSERT INTO schools (name, email, phone, password, school_type) VALUES (%s, %s, %s, %s, %s)", 
+                          (name, email, phone, hashed_password, school_type))
             conn.commit()
             return cls.get_by_id(cursor.lastrowid)
 
-    def update(self, name=None, email=None, phone=None, password=None):
+    def update(self, name=None, email=None, phone=None, password=None, school_type=None):
         conn = get_connection()
         with conn.cursor() as cursor:
             fields = []
@@ -440,6 +477,9 @@ class School:
                 hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
                 fields.append("password=%s")
                 values.append(hashed_password)
+            if school_type is not None:
+                fields.append("school_type=%s")
+                values.append(school_type)
             if fields:
                 values.append(self.id)
                 query = "UPDATE schools SET " + ", ".join(fields) + " WHERE id=%s"

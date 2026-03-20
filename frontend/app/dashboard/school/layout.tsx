@@ -17,8 +17,6 @@ import {
 import { useState, useEffect } from "react";
 import "./school.css";
 
-/* ---------------- Translation System ---------------- */
-
 const translations = {
   fr: {
     dashboard: "Tableau de bord",
@@ -31,26 +29,10 @@ const translations = {
     search: "Rechercher...",
     schoolAdmin: "Administrateur de l'école",
     users: "Utilisateurs",
-    addUser: "Ajouter un utilisateur",
-    editUser: "Modifier l'utilisateur",
-    updateUser: "Mettre à jour l'utilisateur",
-    createUser: "Créer l'utilisateur",
-    name: "Nom",
-    email: "Email",
-    role: "Rôle",
-    school: "École",
-    status: "Statut",
-    createdAt: "Créé le",
-    actions: "Actions",
-    searchUsers: "Rechercher des utilisateurs...",
-    allRoles: "Tous les rôles",
-    allStatus: "Tous les statuts",
-    active: "Actif",
-    inactive: "Inactif",
-    loading: "Chargement",
-    noUsersFound: "Aucun utilisateur trouvé",
-    cancel: "Annuler",
-    profileImage: "Image de profil",
+    secretary: "Secrétaire",
+    courses: "Cours",
+    payments: "Paiements",
+    messages: "Messages",
   },
   en: {
     dashboard: "Dashboard",
@@ -63,26 +45,10 @@ const translations = {
     search: "Search...",
     schoolAdmin: "School Administrator",
     users: "Users",
-    addUser: "Add User",
-    editUser: "Edit User",
-    updateUser: "Update User",
-    createUser: "Create User",
-    name: "Name",
-    email: "Email",
-    role: "Role",
-    school: "School",
-    status: "Status",
-    createdAt: "Created At",
-    actions: "Actions",
-    searchUsers: "Search users...",
-    allRoles: "All Roles",
-    allStatus: "All Status",
-    active: "Active",
-    inactive: "Inactive",
-    loading: "Loading",
-    noUsersFound: "No users found",
-    cancel: "Cancel",
-    profileImage: "Profile Image",
+    secretary: "Secretary",
+    courses: "Courses",
+    payments: "Payments",
+    messages: "Messages",
   },
 };
 
@@ -90,132 +56,116 @@ function useTranslation(language: "fr" | "en") {
   return translations[language];
 }
 
-/* ---------------- Responsive Hook ---------------- */
-
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(`(max-width: ${breakpoint}px)`);
-
     const handleChange = () => setIsMobile(mediaQuery.matches);
-
     handleChange();
     mediaQuery.addEventListener("change", handleChange);
-
     return () => mediaQuery.removeEventListener("change", handleChange);
   }, [breakpoint]);
 
   return isMobile;
 }
 
-/* ---------------- Component ---------------- */
-
-export default function SchoolLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function SchoolLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [language, setLanguage] = useState<"fr" | "en">("fr");
+  const [schoolType, setSchoolType] = useState<string>("primaire");
 
   const t = useTranslation(language);
   const isMobile = useIsMobile();
 
-  const menu = [
+  const baseMenu = [
     { name: t.dashboard, href: "/dashboard/school", icon: <FaTachometerAlt /> },
-    { name: "All Users", href: "/dashboard/school/users", icon: <FaChalkboardTeacher /> },
-    { name: t.classes, href: "/dashboard/school/classes", icon: <FaSchool /> },
+    { name: t.users || "All Users", href: "/dashboard/school/users", icon: <FaTachometerAlt /> },
     { name: t.settings, href: "/dashboard/school/settings", icon: <FaCog /> },
   ];
 
+  const primaireSubmenu = [
+    { name: t.classes, href: "/dashboard/school/classes", icon: <FaSchool /> },
+    { name: t.teachers, href: "/dashboard/school/teachers", icon: <FaChalkboardTeacher /> },
+    { name: t.secretary, href: "/dashboard/school/secretary", icon: <FaUserGraduate /> },
+    { name: t.courses, href: "/dashboard/school/courses", icon: <FaChartBar /> },
+    { name: t.payments, href: "/dashboard/school/payments", icon: <FaChartBar /> },
+    { name: t.messages, href: "/dashboard/school/messages", icon: <FaBell /> },
+  ];
+
+  const secondaireSubmenu = [
+    { name: "Humanités", href: "/dashboard/school/humanites", icon: <FaSchool /> },
+    { name: t.teachers, href: "/dashboard/school/teachers", icon: <FaChalkboardTeacher /> },
+    { name: t.secretary, href: "/dashboard/school/secretary", icon: <FaUserGraduate /> },
+    { name: t.courses, href: "/dashboard/school/courses", icon: <FaChartBar /> },
+    { name: t.payments, href: "/dashboard/school/payments", icon: <FaChartBar /> },
+    { name: t.messages, href: "/dashboard/school/messages", icon: <FaBell /> },
+  ];
+
+  const menu = [...baseMenu];
+  const insertIndex = 1;
+  const submenuToUse = ["primaire", "cycle_fondamental", "maternelle"].includes(schoolType) ? primaireSubmenu : secondaireSubmenu;
+  menu.splice(insertIndex, 0, ...submenuToUse);
+
   return (
     <div className={`school-layout ${sidebarOpen ? "" : "sidebar-closed"}`}>
-
       <button className="sidebar-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
         {sidebarOpen ? <FaTimes /> : <FaBars />}
       </button>
 
-      {/* Sidebar */}
       <aside className="school-sidebar">
-        <div className="school-logo">
-          📚 SP!K <span>School Admin</span>
+        <div className="school-logo">📚 SP!K <span>School Admin</span></div>
+
+        <div className="school-type-select">
+          {sidebarOpen && (
+            <select value={schoolType} onChange={(e) => setSchoolType(e.target.value)} className="school-type-input">
+              <option value="primaire">Primaire (classique)</option>
+              <option value="secondaire">Secondaire (classique)</option>
+              <option value="cycle_fondamental">Cycle fondamental (RDC)</option>
+              <option value="humanites">Humanités (RDC)</option>
+              <option value="maternelle">Maternelle</option>
+            </select>
+          )}
         </div>
 
         {isMobile && (
           <div className="sidebar-controls">
-            <input
-              type="text"
-              placeholder={t.search}
-              className="school-search"
-            />
+            <input type="text" placeholder={t.search} className="school-search" />
           </div>
         )}
 
         <ul className="school-menu">
-          {menu.map((item) => (
-            <li
-              key={item.href}
-              className={pathname === item.href ? "active" : ""}
-            >
-              <Link href={item.href}>
-                <span className="icon">{item.icon}</span>
-                {sidebarOpen && item.name}
-              </Link>
-            </li>
-          ))}
+        {menu.map((item) => (
+        <li key={item.href} className={pathname === item.href ? "active" : ""}>
+        <Link href={item.href} className="menu-link">
+        <span className="icon">{item.icon}</span>
+        {sidebarOpen && <span className="label">{item.name}</span>}
+        </Link>
+        </li>
+        ))}
         </ul>
 
-        <div className="logout">
-          <FaSignOutAlt /> {sidebarOpen && t.logout}
-        </div>
+        <div className="logout"><FaSignOutAlt /> {sidebarOpen && t.logout}</div>
       </aside>
 
-      {/* Main */}
       <div className="school-main">
         <header className="school-topbar">
-
           <div className="topbar-left">
             {!sidebarOpen && (
-              <div className="school-logo" style={{ fontSize: '18px', marginBottom: '0', marginRight: '20px' }}>
-                📚 SP!K <span style={{ fontSize: '11px' }}>School Admin</span>
-              </div>
+              <div className="school-logo small">📚 SP!K <span>School Admin</span></div>
             )}
-            {!isMobile && (
-              <input
-                type="text"
-                placeholder={t.search}
-                className="school-search"
-              />
-            )}
+            {!isMobile && <input type="text" placeholder={t.search} className="school-search" />}
           </div>
 
           <div className="topbar-right">
             <div className="language-selector">
-              <button
-                onClick={() => setLanguage(language === "fr" ? "en" : "fr")}
-                className="language-btn"
-              >
-                {language === "fr" ? "EN" : "FR"}
-              </button>
+              <button onClick={() => setLanguage(language === "fr" ? "en" : "fr") } className="language-btn">{language === "fr" ? "EN" : "FR"}</button>
             </div>
-
-            <div className="notification-icon">
-              <FaBell />
-              <span className="notification-badge">3</span>
-            </div>
-
+            <div className="notification-icon"><FaBell /><span className="notification-badge">3</span></div>
             <div className="school-profile">
-              <img
-                src="https://i.pravatar.cc/40"
-                alt="profile"
-                className="avatar"
-              />
-              <div className="profile-info">
-                <strong>School Admin</strong>
-                <p>{t.schoolAdmin}</p>
-              </div>
+              <img src="https://i.pravatar.cc/40" alt="profile" className="avatar" />
+              <div className="profile-info"><strong>School Admin</strong><p>{t.schoolAdmin}</p></div>
             </div>
           </div>
         </header>
