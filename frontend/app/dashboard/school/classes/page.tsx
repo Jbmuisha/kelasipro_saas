@@ -211,7 +211,7 @@ export default function SecretaryClassesPage() {
                 <tr key={cls.id}>
                   <td>{cls.id}</td>
                   <td>{cls.name}</td>
-                  <td>{new Date(cls.createdAt).toLocaleDateString()}</td>
+                  <td>{cls.createdAt ? new Date(cls.createdAt).toLocaleString() : '-'}</td>
                 </tr>
               ))}
             </tbody>

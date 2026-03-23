@@ -52,15 +52,21 @@ export default function SchoolTeachersPage() {
   const fetchSchoolAndClasses = async () => {
     try{
       const schoolId = localStorage.getItem('school_id') || '1';
+      console.debug('[teachers] fetching school/type for', schoolId, 'bundleAt', new Date().toISOString());
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/schools/${schoolId}`);
       if(res.ok){
         const sd = await res.json();
         setSchoolType(sd.school_type || null);
       }
-      const cRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/classes?school_id=${schoolId}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } });
-      if(cRes.ok){ const cd = await cRes.json(); setClassesList(cd.classes || []); }
+      const token = localStorage.getItem('token');
+      const cRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/classes?school_id=${schoolId}`, { headers: { Authorization: `Bearer ${token || ''}` } });
+      if(cRes.ok){ const cd = await cRes.json(); console.debug('[teachers] classes response', cd); setClassesList(cd.classes || []); }
+      else { console.warn('[teachers] classes fetch failed', cRes.status); }
     }catch(err){ console.error(err); }
   }
+
+  // small runtime build marker for detecting stale bundles (will log timestamp)
+  useEffect(()=>{ console.debug('[teachers] runtime bundle loaded at', new Date().toISOString()); }, []);
 
   useEffect(() => {
     fetchTeachers();
@@ -81,6 +87,8 @@ export default function SchoolTeachersPage() {
   }
 
   const [courseErrors, setCourseErrors] = useState<Record<number,string>>({});
+  const [toast, setToast] = useState({ show:false, message:'', type:'success' });
+  const showToast = (message:string, type:string='success') => { setToast({ show:true, message, type }); setTimeout(()=>setToast({ show:false, message:'', type:'success' }),3000); };
 
   const validateCourses = () => {
     const errors: Record<number,string> = {};
@@ -157,6 +165,29 @@ export default function SchoolTeachersPage() {
       {loading && <p>Loading...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {successMsg && <p style={{ color: 'green' }}>{successMsg}</p>}
+
+      <div style={{ marginBottom: 12 }}>
+        <button onClick={async () => {
+          const userStr = localStorage.getItem('user');
+          if (!userStr) { showToast('No user in localStorage','error'); return; }
+          const user = JSON.parse(userStr);
+          if (!user.id || !user.school_id) { showToast('Invalid user in localStorage','error'); return; }
+          const token = localStorage.getItem('token');
+          const st = schoolType || 'primaire';
+          const base = st.toLowerCase().includes('second') ? '1ere secondaire' : '1ere primaire';
+          const letters = ['A','B','C','D','E','F'];
+          try{
+            for(const l of letters){
+              const name = `${base} ${l}`;
+              const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/classes/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ school_id: Number(user.school_id), name, created_by: user.id }) });
+              const body = await res.json().catch(()=>({}));
+              if (!res.ok){ console.warn('Bulk create failed for', name, body); }
+            }
+            showToast('Created A-F sections', 'success');
+            fetchSchoolAndClasses();
+          }catch(err:any){ console.error(err); showToast('Bulk create error','error'); }
+        }}>Create A-F sections</button>
+      </div>
 
       <form onSubmit={createUser} style={{ marginBottom: 20 }}>
         <h3>Add user</h3>
