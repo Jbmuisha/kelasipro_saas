@@ -514,7 +514,7 @@ export default function TeacherDashboard() {
         </div>
       </div>
 
-      {/* TOAST NOTIFICATION */}
+      
       {toast.show && (
         <Toast 
           message={toast.message} 

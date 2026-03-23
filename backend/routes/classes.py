@@ -4,7 +4,7 @@ import re
 
 classes_bp = Blueprint('classes', __name__)
 
-@classes_bp.route("/", methods=["GET"])
+@classes_bp.route("/", methods=["GET"]) 
 def get_classes():
     school_id = request.args.get("school_id")
     if not school_id:
@@ -16,7 +16,7 @@ def get_classes():
         return jsonify({"error": str(e)}), 500
 
 
-@classes_bp.route("/", methods=["POST"])
+@classes_bp.route("/", methods=["POST"]) 
 def create_class():
     data = request.json
     school_id = data.get("school_id")
@@ -27,17 +27,16 @@ def create_class():
         return jsonify({"error": "school_id, name and created_by are required"}), 400
 
     try:
-        # Verify requester is SCHOOL_ADMIN for that school
+        # Verify requester
         requester = User.get_by_id(created_by)
         if not requester:
             return jsonify({"error": "Requester not found"}), 404
         if requester.role != 'SCHOOL_ADMIN':
             return jsonify({"error": "Only SCHOOL_ADMIN can create classes"}), 403
-        # Ensure requester belongs to the target school
         if str(requester.school_id) != str(school_id):
             return jsonify({"error": "Requester is not admin of this school"}), 403
 
-        # Load school to get school_type
+        # Load school and allowed base names
         school = School.get_by_id(school_id)
         if not school:
             return jsonify({"error": "School not found"}), 404
@@ -45,25 +44,23 @@ def create_class():
         if not allowed:
             return jsonify({"error": "School type not set or invalid"}), 400
 
-        # Normalize name for matching base level (allow groups for 1ere secondaire)
         name_lower = name.strip().lower()
+        allowed_lower = [a.lower() for a in allowed]
 
-        # Direct match
-        if name_lower in [a.lower() for a in allowed]:
+        valid = False
+        # exact match
+        if name_lower in allowed_lower:
             valid = True
         else:
-            # Allow patterns like "1ere secondaire - A" when base is "1ere secondaire"
-            valid = False
-            for base in allowed:
-                base_lower = base.lower()
-                if name_lower.startswith(base_lower):
-                    # allow suffix like " - A" or " - 1" or " - groupe" etc.
-                    suffix = name_lower[len(base_lower):].strip()
+            # check each allowed base
+            for base in allowed_lower:
+                if name_lower.startswith(base):
+                    suffix = name_lower[len(base):].strip()
                     if not suffix:
                         valid = True
                         break
-                    # Accept if suffix matches "- <alphanum>" pattern
-                    if re.match(r'^[-–—\s]+[a-z0-9]+$', suffix):
+                    # allow suffix patterns: optional leading separators then letters/numbers/spaces/hyphens
+                    if re.match(r'^[\s\-–—]*[a-z0-9][a-z0-9\s\-–—]*$', suffix):
                         valid = True
                         break
 
@@ -75,4 +72,4 @@ def create_class():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e)}), 500

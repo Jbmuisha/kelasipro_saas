@@ -27,6 +27,11 @@ export default function SecretaryClassesPage() {
   const [className, setClassName] = useState("");
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [schoolType, setSchoolType] = useState<string | null>(null);
+  const [allowedClassNames, setAllowedClassNames] = useState<string[]>([]);
+  const [customClassName, setCustomClassName] = useState('');
+  const [selectedClassName, setSelectedClassName] = useState('');
+  const [selectedSection, setSelectedSection] = useState('');
 
   useEffect(() => {
     const userStr = localStorage.getItem("user");
@@ -34,6 +39,41 @@ export default function SecretaryClassesPage() {
       setCurrentUser(JSON.parse(userStr));
     }
   }, []);
+
+  useEffect(() => {
+    // when currentUser changes, fetch school_type to determine allowed class names
+    const fetchSchoolType = async () => {
+      if (!currentUser?.school_id) return;
+      try {
+        const res = await fetch(`${API_URL}/api/schools/${currentUser.school_id}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const st = data.school_type || 'primaire';
+        setSchoolType(st);
+        // derive allowed names client-side (mirror backend helpers)
+        const primaire = [
+          "1ere primaire",
+          "2eme primaire",
+          "3eme primaire",
+          "4eme primaire",
+          "5eme primaire",
+          "6eme primaire",
+        ];
+        const secondaire = [
+          "1ere secondaire",
+          "2eme secondaire",
+          "3eme secondaire",
+          "4eme secondaire",
+          "5eme secondaire",
+          "6eme secondaire",
+        ];
+        if (st && st.toLowerCase().includes('primaire')) setAllowedClassNames(primaire);
+        else if (st && st.toLowerCase().includes('second')) setAllowedClassNames(secondaire);
+        else setAllowedClassNames([]);
+      } catch (err) { console.error(err); }
+    };
+    fetchSchoolType();
+  }, [currentUser]);
 
   const showToast = (message: string, type: string = "success") => {
     setToast({ show: true, message, type });
@@ -68,24 +108,28 @@ export default function SecretaryClassesPage() {
   const handleCreateClass = async () => {
     if (!className.trim()) return;
     try {
+      const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/api/classes/`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          school_id: currentUser.school_id,
-          name: className
+          school_id: Number(currentUser.school_id),
+          name: className,
+          created_by: currentUser?.id || null
         })
       });
       if (!response.ok) {
-        throw new Error("Failed to create class");
+        const body = await response.json().catch(()=>({}));
+        const msg = body.error || body.message || 'Failed to create class';
+        throw new Error(msg);
       }
       fetchClasses();
       setShowModal(false);
       setClassName("");
       showToast("Class created successfully!");
-    } catch (err) {
+    } catch (err:any) {
       console.error(err);
-      showToast("Error creating class", "error");
+      showToast(err.message || "Error creating class", "error");
     }
   };
 
@@ -97,6 +141,55 @@ export default function SecretaryClassesPage() {
           <button className="btn-add" onClick={() => setShowModal(true)}>
             + Add Class
           </button>
+          <button className="btn-test" onClick={async () => {
+            // create a test class using currentUser
+            const userStr = localStorage.getItem('user');
+            if (!userStr) { showToast('No user in localStorage', 'error'); return; }
+            const user = JSON.parse(userStr);
+            if (!user.id || !user.school_id) { showToast('Invalid user in localStorage', 'error'); return; }
+            const token = localStorage.getItem('token');
+            // choose safe base name depending on schoolType
+            const st = schoolType || 'primaire';
+            const base = st.toLowerCase().includes('second') ? '1ere secondaire' : '1ere primaire';
+            const testName = `${base} A`;
+            try {
+              const res = await fetch(`${API_URL}/api/classes/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ school_id: Number(user.school_id), name: testName, created_by: user.id })
+              });
+              const body = await res.json().catch(()=>({}));
+              if (!res.ok) {
+                showToast(body.error || body.message || 'Failed to create test class', 'error');
+              } else {
+                showToast('Test class created: '+testName, 'success');
+                fetchClasses();
+              }
+            } catch (err:any) {
+              console.error(err);
+              showToast(err.message || 'Error', 'error');
+            }
+          }}>Create test class</button>
+          <button className="btn-bulk" onClick={async () => {
+            const userStr = localStorage.getItem('user');
+            if (!userStr) { showToast('No user in localStorage', 'error'); return; }
+            const user = JSON.parse(userStr);
+            if (!user.id || !user.school_id) { showToast('Invalid user in localStorage', 'error'); return; }
+            const token = localStorage.getItem('token');
+            const st = schoolType || 'primaire';
+            const base = st.toLowerCase().includes('second') ? '1ere secondaire' : '1ere primaire';
+            const letters = ['A','B','C','D','E','F'];
+            try{
+              for(const l of letters){
+                const name = `${base} ${l}`;
+                const res = await fetch(`${API_URL}/api/classes/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ school_id: Number(user.school_id), name, created_by: user.id }) });
+                const body = await res.json().catch(()=>({}));
+                if (!res.ok){ console.warn('Bulk create failed for', name, body); }
+              }
+              showToast('Bulk classes created (A-F)', 'success');
+              fetchClasses();
+            }catch(err:any){ console.error(err); showToast('Bulk create error','error'); }
+          }}>Create A-F sections</button>
         </div>
       </div>
 
@@ -148,12 +241,53 @@ export default function SecretaryClassesPage() {
             <div className="user-form">
               <div className="form-group">
                 <label>Class Name</label>
-                <input
-                  type="text"
-                  value={className}
-                  onChange={(e) => setClassName(e.target.value)}
-                  placeholder="e.g. 1st Grade, Math 101"
-                />
+                {allowedClassNames && allowedClassNames.length > 0 ? (
+                  <div>
+                    <select value={selectedClassName || ''} onChange={(e)=>{
+                      const v = e.target.value;
+                      setSelectedClassName(v);
+                      if(v !== 'OTHER') setClassName(v);
+                    }}>
+                      <option value="">Select class</option>
+                      {allowedClassNames.map(n => <option key={n} value={n}>{n}</option>)}
+                      <option value="OTHER">Other (custom)</option>
+                    </select>
+                    {selectedClassName === 'OTHER' && (
+                      <input type="text" value={className} onChange={e=>setClassName(e.target.value)} placeholder="Custom class name" />
+                    )}
+
+                    {/* Section picker: alphabet A-Z */}
+                    {selectedClassName && selectedClassName !== 'OTHER' && (
+                      <div style={{ marginTop: 8 }}>
+                        <label>Section</label>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                          {Array.from({ length: 26 }).map((_, i) => {
+                            const letter = String.fromCharCode(65 + i); // A..Z
+                            return (
+                              <button
+                                key={letter}
+                                type="button"
+                                onClick={() => { setSelectedSection(letter); setClassName(`${selectedClassName} ${letter}`); }}
+                                style={{ padding: '4px 8px', background: selectedSection===letter ? '#ddd' : '#fff', border: '1px solid #ccc', borderRadius: 4 }}
+                              >{letter}</button>
+                            )
+                          })}
+                          <button type="button" onClick={()=>{ setSelectedSection('OTHER'); setClassName(''); }} style={{ padding: '4px 8px' }}>Other</button>
+                        </div>
+                        {selectedSection === 'OTHER' && (
+                          <input style={{ marginTop: 8 }} type="text" value={className} onChange={e=>setClassName(e.target.value)} placeholder="Custom section" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={className}
+                    onChange={(e) => setClassName(e.target.value)}
+                    placeholder="e.g. 1st Grade, Math 101"
+                  />
+                )}
               </div>
               <div className="form-actions">
                 <button className="btn-cancel" onClick={() => setShowModal(false)}>Cancel</button>
