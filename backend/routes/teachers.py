@@ -26,22 +26,30 @@ def ensure_courses_table():
 
 
 def get_requester_from_auth():
-    
+    """Return requester info from Authorization: Bearer <jwt>.
+
+    Uses the same JWT secret as /api/auth/login.
+    """
     auth_header = request.headers.get('Authorization')
     if not auth_header:
         return None
-    token = auth_header.replace('Bearer ', '')
-    
+
+    token = auth_header.replace('Bearer ', '').strip()
+    if not token:
+        return None
+
     try:
-        conn = get_connection()
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT id, role FROM users WHERE password=%s", (token,))
-            row = cursor.fetchone()
-            if row:
-                return {'id': row['id'], 'role': row['role']}
+        import os, jwt
+        secret = os.getenv("JWT_SECRET", "supersecretkey")
+        payload = jwt.decode(token, secret, algorithms=["HS256"])
+        user_id = payload.get('id')
+        role = payload.get('role')
+        school_id = payload.get('school_id')
+        if not user_id or not role:
+            return None
+        return {'id': user_id, 'role': role, 'school_id': school_id}
     except Exception:
-        pass
-    return None
+        return None
 
 
 @teachers_bp.route('/teachers', methods=['POST'])
@@ -73,10 +81,14 @@ def create_teacher():
             if not school:
                 return jsonify({'error': 'School not found'}), 404
 
-        # If school is secondary, require at least one course when creating a TEACHER
+        # If school is secondary, require at least one course when creating a TEACHER.
+        # NOTE: We only enforce this when the client explicitly sends a "courses" field.
+        # This allows primary schools (or misconfigured school_type) to create teachers
+        # first, then assign classes/courses later from the dedicated pages.
         if school and school.school_type and school.school_type.lower() in ('secondaire', 'secondary') and role == 'TEACHER':
-            if not courses or not isinstance(courses, list) or len(courses) == 0:
-                return jsonify({'error': 'Secondary school teachers must have at least one course with classes'}), 400
+            if 'courses' in data:
+                if not courses or not isinstance(courses, list) or len(courses) == 0:
+                    return jsonify({'error': 'Secondary school teachers must have at least one course with classes'}), 400
 
         # create user
         new_user = User.create(name=name, email=email, password=password, role=role, school_id=school_id, created_by=requester['id'])
@@ -178,7 +190,11 @@ def list_teachers():
 
         school_id = request.args.get('school_id')
         if not school_id:
-            return jsonify({'error': 'school_id query param is required'}), 400
+            # fallback to token school_id if present
+            if requester and requester.get('school_id'):
+                school_id = requester.get('school_id')
+            else:
+                return jsonify({'error': 'school_id query param is required'}), 400
 
         # If requester is None, pass no requester_id/role to User.get_all (will return all for school)
         requester_id = requester['id'] if requester else None
@@ -193,9 +209,12 @@ def list_teachers():
             format_ids = ','.join(['%s'] * len(teacher_ids))
             conn = get_connection()
             with conn.cursor() as cursor:
-                # teacher_classes
-                cursor.execute(f"SELECT teacher_id, class_id FROM teacher_classes WHERE teacher_id IN ({format_ids})", tuple(teacher_ids))
-                tc_rows = cursor.fetchall()
+                # teacher_classes (table may not exist yet)
+                try:
+                    cursor.execute(f"SELECT teacher_id, class_id FROM teacher_classes WHERE teacher_id IN ({format_ids})", tuple(teacher_ids))
+                    tc_rows = cursor.fetchall()
+                except Exception:
+                    tc_rows = []
 
                 # fetch class names
                 class_ids = list({r['class_id'] for r in tc_rows})
@@ -210,16 +229,23 @@ def list_teachers():
                 for r in tc_rows:
                     teacher_classes_map[r['teacher_id']].append({'id': r['class_id'], 'name': classes_map.get(r['class_id'])})
 
-                # courses for teachers
-                cursor.execute(f"SELECT id, teacher_id, name, description FROM courses WHERE teacher_id IN ({format_ids})", tuple(teacher_ids))
-                course_rows = cursor.fetchall()
+                # courses for teachers (table may not exist yet)
+                try:
+                    cursor.execute(f"SELECT id, teacher_id, name, description FROM courses WHERE teacher_id IN ({format_ids})", tuple(teacher_ids))
+                    course_rows = cursor.fetchall()
+                except Exception:
+                    course_rows = []
+
                 course_ids = [c['id'] for c in course_rows]
 
                 course_classes_map = {}
                 if course_ids:
-                    format_cc = ','.join(['%s'] * len(course_ids))
-                    cursor.execute(f"SELECT course_id, class_id FROM course_classes WHERE course_id IN ({format_cc})", tuple(course_ids))
-                    cc_rows = cursor.fetchall()
+                    try:
+                        format_cc = ','.join(['%s'] * len(course_ids))
+                        cursor.execute(f"SELECT course_id, class_id FROM course_classes WHERE course_id IN ({format_cc})", tuple(course_ids))
+                        cc_rows = cursor.fetchall()
+                    except Exception:
+                        cc_rows = []
 
                     # fetch class names for course classes
                     cc_class_ids = list({r['class_id'] for r in cc_rows})

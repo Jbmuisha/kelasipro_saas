@@ -275,10 +275,12 @@ class User:
             if school_id is not None:
                 fields.append("school_id=%s")
                 values.append(school_id)
-            if password:
-                hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-                fields.append("password=%s")
-                values.append(hashed_password)
+            if password is not None:
+                # Allow "leave blank" in UI without overwriting the password.
+                if password != "":
+                    hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+                    fields.append("password=%s")
+                    values.append(hashed_password)
             if profile_image is not None:
                 fields.append("profile_image=%s")
                 values.append(profile_image)
@@ -319,11 +321,12 @@ class User:
 
 
 class ClassModel:
-    def __init__(self, id, school_id, name, created_at=None):
+    def __init__(self, id, school_id, name, created_at=None, level=None):
         self.id = id
         self.school_id = school_id
         self.name = name
         self.created_at = created_at
+        self.level = level
 
     @classmethod
     def from_dict(cls, data):
@@ -331,7 +334,8 @@ class ClassModel:
             id=data['id'],
             school_id=data['school_id'],
             name=data['name'],
-            created_at=data.get('created_at')
+            created_at=data.get('created_at'),
+            level=data.get('level')
         )
 
     def to_dict(self):
@@ -339,22 +343,37 @@ class ClassModel:
             'id': self.id,
             'school_id': self.school_id,
             'name': self.name,
+            'level': self.level,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
     @classmethod
-    def get_by_school(cls, school_id):
+    def get_by_school(cls, school_id, level=None):
         conn = get_connection()
         with conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM classes WHERE school_id=%s ORDER BY name ASC", (school_id,))
+            if level:
+                cursor.execute("SELECT * FROM classes WHERE school_id=%s AND level=%s ORDER BY name ASC", (school_id, level))
+            else:
+                cursor.execute("SELECT * FROM classes WHERE school_id=%s ORDER BY name ASC", (school_id,))
             data = cursor.fetchall()
         return [cls.from_dict(d) for d in data]
 
     @classmethod
-    def create(cls, school_id, name):
+    def create(cls, school_id, name, level=None):
         conn = get_connection()
         with conn.cursor() as cursor:
-            cursor.execute("INSERT INTO classes (school_id, name) VALUES (%s, %s)", (school_id, name))
+            # If the DB has a 'level' column, persist it.
+            try:
+                cursor.execute("SHOW COLUMNS FROM classes LIKE 'level'")
+                has_level = cursor.fetchone() is not None
+            except Exception:
+                has_level = False
+
+            if has_level:
+                cursor.execute("INSERT INTO classes (school_id, name, level) VALUES (%s, %s, %s)", (school_id, name, level))
+            else:
+                cursor.execute("INSERT INTO classes (school_id, name) VALUES (%s, %s)", (school_id, name))
+
             conn.commit()
             class_id = cursor.lastrowid
             cursor.execute("SELECT * FROM classes WHERE id=%s", (class_id,))

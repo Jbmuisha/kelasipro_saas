@@ -11,7 +11,7 @@ const Toast = ({ message, type, onClose }: { message: string; type: string; onCl
   </div>
 );
 
-const API_URL = "http://localhost:5000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 type User = {
   id: string;
@@ -114,26 +114,32 @@ export default function SchoolUsersPage() {
   const handleUpdateUser = async () => {
     if (!editingUser) return;
     try {
+      const token = localStorage.getItem('token');
       const response = await fetch(`${API_URL}/api/users/${editingUser.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token || ''}`
+        },
         body: JSON.stringify({
           ...editingUser,
           id: parseInt(editingUser.id)
         }),
       });
-      
+
+      const body = await response.json().catch(() => ({}));
+
       if (!response.ok) {
-        throw new Error(`Failed to update user`);
+        throw new Error(body.error || body.message || `Failed to update user (${response.status})`);
       }
       
       fetchUsers();
       setEditingUser(null);
       setShowModal(false);
       showToast("User updated successfully!", "success");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Update user error:", err);
-      showToast("Failed to update user. Please try again.", "error");
+      showToast(err.message || "Failed to update user. Please try again.", "error");
     }
   };
 
@@ -184,7 +190,11 @@ export default function SchoolUsersPage() {
     }
     
     try {
-      const response = await fetch(`${API_URL}/api/users/${id}`, { method: "DELETE" });
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/api/users/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token || ''}` }
+      });
       
       if (!response.ok) {
         throw new Error("Failed to delete user");
@@ -427,6 +437,15 @@ export default function SchoolUsersPage() {
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
+
+                    // Prevent huge base64 payloads that can crash the DB connection.
+                    // 300KB is a safe default for inline storage.
+                    const maxBytes = 300 * 1024;
+                    if (file.size > maxBytes) {
+                      showToast('Image too large. Please choose an image under 300KB.', 'error');
+                      return;
+                    }
+
                     const reader = new FileReader();
                     reader.onloadend = () => {
                       const base64 = reader.result as string;

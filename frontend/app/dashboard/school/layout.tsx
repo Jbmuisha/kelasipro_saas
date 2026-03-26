@@ -76,6 +76,16 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
   const [language, setLanguage] = useState<"fr" | "en">("fr");
   const [schoolType, setSchoolType] = useState<string>("primaire");
 
+  // Persist selection so pages can use the same school type and avoid mismatches.
+  useEffect(() => {
+    const saved = localStorage.getItem('school_type');
+    if (saved) setSchoolType(saved);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('school_type', schoolType);
+  }, [schoolType]);
+
   const t = useTranslation(language);
   const isMobile = useIsMobile();
 
@@ -105,7 +115,7 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
 
   const menu = [...baseMenu];
   const insertIndex = 1;
-  const submenuToUse = ["primaire", "cycle_fondamental", "maternelle"].includes(schoolType) ? primaireSubmenu : secondaireSubmenu;
+  const submenuToUse = ["primaire", "maternelle"].includes(schoolType) ? primaireSubmenu : secondaireSubmenu;
   menu.splice(insertIndex, 0, ...submenuToUse);
 
   return (
@@ -119,11 +129,45 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
 
         <div className="school-type-select">
           {sidebarOpen && (
-            <select value={schoolType} onChange={(e) => setSchoolType(e.target.value)} className="school-type-input">
-            <option value="maternelle">Maternelle</option>
-            <option value="primaire">École primaire</option>
-            <option value="secondaire">École secondaire</option>
-           
+            <select
+              value={schoolType}
+              onChange={async (e) => {
+                const nextType = e.target.value;
+                setSchoolType(nextType);
+
+                // Persist locally for immediate UI changes
+                localStorage.setItem('school_type', nextType);
+
+                // Also persist to backend so all pages + validations match the real school type.
+                try {
+                  const token = localStorage.getItem('token');
+                  const userStr = localStorage.getItem('user');
+                  const user = userStr ? JSON.parse(userStr) : null;
+                  const schoolId = user?.school_id || localStorage.getItem('school_id');
+                  if (!token || !schoolId) return;
+
+                  const res = await fetch(`${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '')}/api/schools/${schoolId}`, {
+                    method: 'PUT',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Authorization: `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ school_type: nextType })
+                  });
+
+                  if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    console.error('[school layout] failed to persist school_type', res.status, body);
+                  }
+                } catch (err) {
+                  console.error('[school layout] failed to persist school_type', err);
+                }
+              }}
+              className="school-type-input"
+            >
+              <option value="maternelle">Maternelle</option>
+              <option value="primaire">École primaire</option>
+              <option value="secondaire">École secondaire</option>
             </select>
           )}
         </div>

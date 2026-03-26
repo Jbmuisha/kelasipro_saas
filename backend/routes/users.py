@@ -71,13 +71,19 @@ def update_user(user_id):
         if not user:
             return jsonify({"error": "User not found"}), 404
 
+        # Avoid sending huge base64 images to MySQL (can trigger max_allowed_packet / broken pipe).
+        # Only update profile_image if explicitly provided and reasonably sized.
+        profile_image = data.get("profile_image")
+        if isinstance(profile_image, str) and len(profile_image) > 500_000:
+            return jsonify({"error": "Profile image is too large. Please upload a smaller image."}), 400
+
         update_args = {
             "name": data.get("name"),
             "email": data.get("email"),
             "role": data.get("role"),
             "password": data.get("password"),
             "school_id": data.get("school_id"),
-            "profile_image": data.get("profile_image")
+            "profile_image": profile_image
         }
         
         if "class_id" in data:

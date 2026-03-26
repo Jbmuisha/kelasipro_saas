@@ -92,8 +92,7 @@ export default function SecretaryClassesPage() {
     setLoading(true);
     setError("");
     try {
-      const level = localStorage.getItem('school_type') || schoolType || 'primaire';
-      const response = await fetch(`${API_URL}/api/classes/?school_id=${currentUser.school_id}&level=${encodeURIComponent(level)}`);
+      const response = await fetch(`${API_URL}/api/classes/?school_id=${currentUser.school_id}`);
       if (!response.ok) {
         throw new Error("Failed to fetch classes");
       }
@@ -178,14 +177,12 @@ export default function SecretaryClassesPage() {
     if (!className.trim()) return;
     try {
       const token = localStorage.getItem('token');
-      const level = localStorage.getItem('school_type') || schoolType || 'primaire';
       const response = await fetch(`${API_URL}/api/classes/`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           school_id: Number(currentUser.school_id),
           name: className,
-          level,
           created_by: currentUser?.id || null
         })
       });
@@ -224,11 +221,10 @@ export default function SecretaryClassesPage() {
             const base = st.toLowerCase().includes('second') ? '1ere secondaire' : '1ere primaire';
             const testName = `${base} A`;
             try {
-              const level = localStorage.getItem('school_type') || schoolType || 'primaire';
               const res = await fetch(`${API_URL}/api/classes/`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ school_id: Number(user.school_id), name: testName, level, created_by: user.id })
+                body: JSON.stringify({ school_id: Number(user.school_id), name: testName, created_by: user.id })
               });
               const body = await res.json().catch(()=>({}));
               if (!res.ok) {
@@ -254,8 +250,7 @@ export default function SecretaryClassesPage() {
             try{
               for(const l of letters){
                 const name = `${base} ${l}`;
-                const level = localStorage.getItem('school_type') || schoolType || 'primaire';
-                const res = await fetch(`${API_URL}/api/classes/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ school_id: Number(user.school_id), name, level, created_by: user.id }) });
+                const res = await fetch(`${API_URL}/api/classes/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ school_id: Number(user.school_id), name, created_by: user.id }) });
                 const body = await res.json().catch(()=>({}));
                 if (!res.ok){ console.warn('Bulk create failed for', name, body); }
               }
