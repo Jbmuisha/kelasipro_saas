@@ -5,7 +5,7 @@ from datetime import datetime
 
 class User:
     def __init__(self, id, name, email, role, created_at=None,
-                 school_id=None, status=None, profile_image=None, class_id=None, unique_id=None, created_by=None):
+                 school_id=None, status=None, profile_image=None, class_id=None, unique_id=None, created_by=None, admin_level=None):
         self.id = id
         self.name = name
         self.email = email
@@ -17,6 +17,7 @@ class User:
         self.class_id = class_id
         self.unique_id = unique_id
         self.created_by = created_by
+        self.admin_level = admin_level
         self.children = [] # For parents
         self.parents = [] # For students
 
@@ -34,7 +35,8 @@ class User:
             profile_image=data.get('profile_image'),
             class_id=data.get('class_id'),
             unique_id=data.get('unique_id'),
-            created_by=data.get('created_by')
+            created_by=data.get('created_by'),
+            admin_level=data.get('admin_level')
         )
         if 'children' in data:
             user.children = data['children']
@@ -61,7 +63,8 @@ class User:
             'password': self.password.decode() if hasattr(self, 'password') and isinstance(self.password, bytes) else (self.password if hasattr(self, 'password') else None),
             'children': self.children,
             'parents': self.parents,
-            'created_by': self.created_by if hasattr(self, 'created_by') else None
+            'created_by': self.created_by if hasattr(self, 'created_by') else None,
+            'admin_level': self.admin_level if hasattr(self, 'admin_level') else None
         }
 
     @classmethod
@@ -72,7 +75,7 @@ class User:
             with conn.cursor() as cursor:
                 params = []
                 # Base query
-                query = "SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, created_by FROM users WHERE 1=1"
+                query = "SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, created_by, admin_level FROM users WHERE 1=1"
 
                 if not include_super_admin:
                     query += " AND role != 'SUPER_ADMIN'"
@@ -132,7 +135,7 @@ class User:
                     if not allowed_ids:
                         return []
                     format_allowed = ','.join(['%s'] * len(allowed_ids))
-                    query = f"SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, created_by FROM users WHERE id IN ({format_allowed})"
+                    query = f"SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, created_by, admin_level FROM users WHERE id IN ({format_allowed})"
                     cursor.execute(query, tuple(allowed_ids))
                     users_data = cursor.fetchall()
                 else:
@@ -169,7 +172,7 @@ class User:
         conn = get_connection()
         with conn.cursor() as cursor:
             cursor.execute("""
-                SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id
+                SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, admin_level
                 FROM users
                 WHERE id = %s
             """, (user_id,))
@@ -198,7 +201,7 @@ class User:
         return None
 
     @classmethod
-    def create(cls, name, email=None, password=None, role="USER", school_id=None, class_id=None, created_by=None):
+    def create(cls, name, email=None, password=None, role="USER", school_id=None, class_id=None, created_by=None, admin_level=None):
         """Create a new user. Optionally record who created the user in created_by column (if present)."""
         import random
 
@@ -229,11 +232,24 @@ class User:
                     if not cursor.fetchone():
                         break
 
-            # Build insert dynamically if created_by provided
-            if created_by is not None:
+            # Build insert dynamically depending on created_by/admin_level
+            cursor.execute("SHOW COLUMNS FROM users LIKE 'admin_level'")
+            has_admin_level = cursor.fetchone() is not None
+
+            if created_by is not None and has_admin_level:
+                cursor.execute(
+                    "INSERT INTO users (name, email, password, role, school_id, class_id, unique_id, created_by, admin_level) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    (name, email, hashed_password, role, school_id, class_id, unique_id, created_by, admin_level)
+                )
+            elif created_by is not None:
                 cursor.execute(
                     "INSERT INTO users (name, email, password, role, school_id, class_id, unique_id, created_by) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
                     (name, email, hashed_password, role, school_id, class_id, unique_id, created_by)
+                )
+            elif has_admin_level:
+                cursor.execute(
+                    "INSERT INTO users (name, email, password, role, school_id, class_id, unique_id, admin_level) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                    (name, email, hashed_password, role, school_id, class_id, unique_id, admin_level)
                 )
             else:
                 cursor.execute(
@@ -254,7 +270,7 @@ class User:
 
             return cls.get_by_id(new_user_id)
 
-    def update(self, name=None, email=None, role=None, school_id=None, password=None, profile_image=None, class_id=None, children_ids=None):
+    def update(self, name=None, email=None, role=None, school_id=None, password=None, profile_image=None, class_id=None, children_ids=None, admin_level=None):
         """Update an existing user"""
         conn = get_connection()
         with conn.cursor() as cursor:
@@ -287,6 +303,9 @@ class User:
             if class_id is not None:
                 fields.append("class_id=%s")
                 values.append(class_id)
+            if admin_level is not None:
+                fields.append("admin_level=%s")
+                values.append(admin_level)
 
             if fields:
                 values.append(self.id)
@@ -321,12 +340,14 @@ class User:
 
 
 class ClassModel:
-    def __init__(self, id, school_id, name, created_at=None, level=None):
+    def __init__(self, id, school_id, name, created_at=None, level=None, main_teacher_id=None, main_teacher_name=None):
         self.id = id
         self.school_id = school_id
         self.name = name
         self.created_at = created_at
         self.level = level
+        self.main_teacher_id = main_teacher_id
+        self.main_teacher_name = main_teacher_name
 
     @classmethod
     def from_dict(cls, data):
@@ -335,7 +356,9 @@ class ClassModel:
             school_id=data['school_id'],
             name=data['name'],
             created_at=data.get('created_at'),
-            level=data.get('level')
+            level=data.get('level'),
+            main_teacher_id=data.get('main_teacher_id'),
+            main_teacher_name=data.get('main_teacher_name')
         )
 
     def to_dict(self):
@@ -344,6 +367,8 @@ class ClassModel:
             'school_id': self.school_id,
             'name': self.name,
             'level': self.level,
+            'main_teacher_id': self.main_teacher_id,
+            'main_teacher_name': self.main_teacher_name,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
@@ -351,10 +376,25 @@ class ClassModel:
     def get_by_school(cls, school_id, level=None):
         conn = get_connection()
         with conn.cursor() as cursor:
-            if level:
-                cursor.execute("SELECT * FROM classes WHERE school_id=%s AND level=%s ORDER BY name ASC", (school_id, level))
+            # Check if main_teacher_id column exists
+            cursor.execute("SHOW COLUMNS FROM classes LIKE 'main_teacher_id'")
+            has_main_teacher = cursor.fetchone() is not None
+
+            if has_main_teacher:
+                base_query = (
+                    "SELECT c.*, u.name as main_teacher_name "
+                    "FROM classes c LEFT JOIN users u ON u.id = c.main_teacher_id "
+                    "WHERE c.school_id=%s"
+                )
             else:
-                cursor.execute("SELECT * FROM classes WHERE school_id=%s ORDER BY name ASC", (school_id,))
+                base_query = "SELECT c.* FROM classes c WHERE c.school_id=%s"
+
+            if level:
+                base_query += " AND c.level=%s ORDER BY c.name ASC"
+                cursor.execute(base_query, (school_id, level))
+            else:
+                base_query += " ORDER BY c.name ASC"
+                cursor.execute(base_query, (school_id,))
             data = cursor.fetchall()
         return [cls.from_dict(d) for d in data]
 
@@ -391,14 +431,12 @@ PRIMAIRE_CLASSES = [
 ]
 
 SECONDAIRE_CLASSES = [
-    # Cycle inférieur (tronc commun)
+    "7eme secondaire",
+    "8eme secondaire",
     "1ere secondaire",
     "2eme secondaire",
-    # Cycle supérieur
     "3eme secondaire",
     "4eme secondaire",
-    "5eme secondaire",
-    "6eme secondaire",
 ]
 
 

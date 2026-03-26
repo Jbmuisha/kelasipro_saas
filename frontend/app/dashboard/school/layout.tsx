@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   FaTachometerAlt,
   FaChalkboardTeacher,
@@ -77,12 +77,34 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
   const [schoolType, setSchoolType] = useState<string>("primaire");
 
   // Persist selection so pages can use the same school type and avoid mismatches.
+  // If the logged-in SCHOOL_ADMIN has an admin_level, lock the UI to that level.
   useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    const user = userStr ? JSON.parse(userStr) : null;
+    const lockedLevel = user?.role === 'SCHOOL_ADMIN' ? user?.admin_level : null;
+
+    if (lockedLevel) {
+      setSchoolType(lockedLevel);
+      localStorage.setItem('school_type', lockedLevel);
+      return;
+    }
+
     const saved = localStorage.getItem('school_type');
     if (saved) setSchoolType(saved);
   }, []);
 
   useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    const user = userStr ? JSON.parse(userStr) : null;
+    const lockedLevel = user?.role === 'SCHOOL_ADMIN' ? user?.admin_level : null;
+
+    // If locked, do not allow changing it via state updates.
+    if (lockedLevel) {
+      if (schoolType !== lockedLevel) setSchoolType(lockedLevel);
+      localStorage.setItem('school_type', lockedLevel);
+      return;
+    }
+
     localStorage.setItem('school_type', schoolType);
   }, [schoolType]);
 
@@ -105,7 +127,7 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
   ];
 
   const secondaireSubmenu = [
-    { name: "Humanités", href: "/dashboard/school/humanites", icon: <FaSchool /> },
+    { name: t.classes, href: "/dashboard/school/classes", icon: <FaSchool /> },
     { name: t.teachers, href: "/dashboard/school/teachers", icon: <FaChalkboardTeacher /> },
     { name: t.secretary, href: "/dashboard/school/secretary", icon: <FaUserGraduate /> },
     { name: t.courses, href: "/dashboard/school/courses", icon: <FaChartBar /> },
@@ -127,50 +149,7 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
       <aside className="school-sidebar">
         <div className="school-logo">📚 SP!K <span>School Admin</span></div>
 
-        <div className="school-type-select">
-          {sidebarOpen && (
-            <select
-              value={schoolType}
-              onChange={async (e) => {
-                const nextType = e.target.value;
-                setSchoolType(nextType);
-
-                // Persist locally for immediate UI changes
-                localStorage.setItem('school_type', nextType);
-
-                // Also persist to backend so all pages + validations match the real school type.
-                try {
-                  const token = localStorage.getItem('token');
-                  const userStr = localStorage.getItem('user');
-                  const user = userStr ? JSON.parse(userStr) : null;
-                  const schoolId = user?.school_id || localStorage.getItem('school_id');
-                  if (!token || !schoolId) return;
-
-                  const res = await fetch(`${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '')}/api/schools/${schoolId}`, {
-                    method: 'PUT',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      Authorization: `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ school_type: nextType })
-                  });
-
-                  if (!res.ok) {
-                    const body = await res.json().catch(() => ({}));
-                    console.error('[school layout] failed to persist school_type', res.status, body);
-                  }
-                } catch (err) {
-                  console.error('[school layout] failed to persist school_type', err);
-                }
-              }}
-              className="school-type-input"
-            >
-              <option value="maternelle">Maternelle</option>
-              <option value="primaire">École primaire</option>
-              <option value="secondaire">École secondaire</option>
-            </select>
-          )}
-        </div>
+        {/* School type selection removed: level is determined by login (SCHOOL_ADMIN.admin_level). */}
 
         {isMobile && (
           <div className="sidebar-controls">
@@ -189,7 +168,15 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
         ))}
         </ul>
 
-        <div className="logout"><FaSignOutAlt /> {sidebarOpen && t.logout}</div>
+        <div className="logout" onClick={() => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          localStorage.removeItem('school_id');
+          localStorage.removeItem('school_type');
+          window.location.href = '/login';
+        }} style={{ cursor: 'pointer' }}>
+          <FaSignOutAlt /> {sidebarOpen && t.logout}
+        </div>
       </aside>
 
       <div className="school-main">

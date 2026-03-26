@@ -79,7 +79,10 @@ export default function SchoolUsersPage() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`${API_URL}/api/users/?school_id=${currentUser.school_id}&requester_id=${currentUser.id}&requester_role=${currentUser.role}`);
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/api/users/?school_id=${currentUser.school_id}&requester_id=${currentUser.id}&requester_role=${currentUser.role}`, {
+        headers: { Authorization: `Bearer ${token || ''}` }
+      });
       
       if (!response.ok) {
         throw new Error(`Failed to fetch users: ${response.status}`);
@@ -101,10 +104,10 @@ export default function SchoolUsersPage() {
           : "",
       }));
       setUsers(transformedUsers);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Fetch users error:", err);
-      setError("Could not load users.");
-      setUsers([]);
+      setError(err?.message || "Could not load users.");
+      // Keep the previous list instead of clearing it on transient network errors.
     } finally {
       setLoading(false);
     }
@@ -159,7 +162,7 @@ export default function SchoolUsersPage() {
       const response = await fetch(`${API_URL}/api/users/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...requestData, requester_id: currentUser?.id, requester_role: currentUser?.role }),
+        body: JSON.stringify({ ...requestData, requester_id: currentUser?.id }),
       });
       
       if (!response.ok) {
@@ -310,7 +313,10 @@ export default function SchoolUsersPage() {
                         </button>
                       </div>
                     ) : (
-                      <span className="text-muted">View Only</span>
+                      <div className="actions">
+          <button className="btn-edit" onClick={() => openEditModal(user)}>Edit</button>
+          <button className="btn-delete" onClick={() => handleDeleteUser(user.id)}>Delete</button>
+        </div>
                     )}
                   </td>
                 </tr>
@@ -434,26 +440,44 @@ export default function SchoolUsersPage() {
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
 
-                    // Prevent huge base64 payloads that can crash the DB connection.
-                    // 300KB is a safe default for inline storage.
-                    const maxBytes = 300 * 1024;
-                    if (file.size > maxBytes) {
-                      showToast('Image too large. Please choose an image under 300KB.', 'error');
-                      return;
-                    }
+                    try {
+                      const token = localStorage.getItem('token');
+                      const form = new FormData();
+                      form.append('file', file);
 
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                      const base64 = reader.result as string;
+                      const res = await fetch(`${API_URL}/api/uploads/profile-image`, {
+                        method: 'POST',
+                        headers: {
+                          Authorization: `Bearer ${token || ''}`
+                        },
+                        body: form
+                      });
+
+                      const body = await res.json().catch(() => ({}));
+                      if (!res.ok) {
+                        throw new Error(body.error || body.message || 'Failed to upload image');
+                      }
+
+                      const url = body.url as string;
+                      if (!url) throw new Error('Upload did not return a URL');
+
+                      // Convert relative URL to absolute so <img src> works from Next.js origin.
+                      const absoluteUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
+
+                      // Store URL in DB (not base64)
                       editingUser
-                        ? setEditingUser({ ...editingUser, profile_image: base64 })
-                        : setFormData({ ...formData, profile_image: base64 });
-                    };
-                    reader.readAsDataURL(file);
+                        ? setEditingUser({ ...editingUser, profile_image: absoluteUrl })
+                        : setFormData({ ...formData, profile_image: absoluteUrl });
+
+                      showToast('Image uploaded', 'success');
+                    } catch (err: any) {
+                      console.error(err);
+                      showToast(err.message || 'Image upload failed', 'error');
+                    }
                   }}
                 />
                 <small className="form-hint">Select a new image to update the profile picture</small>

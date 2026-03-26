@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   FaTachometerAlt,
   FaChalkboardTeacher,
@@ -15,60 +15,41 @@ import {
   FaSignOutAlt,
   FaBars,
   FaTimes,
+  FaEnvelope,
 } from "react-icons/fa";
 import { useState, useEffect } from "react";
 import "@/app/dashboard/teacher/teacher.css";
 
-/* ---------------- Translation System ---------------- */
-
 const translations = {
   fr: {
     dashboard: "Tableau de bord",
-    classes: "Classes",
+    classes: "Mes Classes",
     students: "Élèves",
+    courses: "Mes Cours",
     assignments: "Devoirs",
     grades: "Notes",
     attendance: "Présence",
     reports: "Rapports",
+    messages: "Messages",
     settings: "Paramètres",
     logout: "Déconnexion",
-    search: "Rechercher élèves, devoirs...",
+    search: "Rechercher...",
     teacher: "Enseignant",
-    welcome: "Bienvenue",
-    myClasses: "Mes Classes",
-    manageStudents: "Gérer les Élèves",
-    createAssignment: "Créer un Devoir",
-    viewGrades: "Voir les Notes",
-    takeAttendance: "Prendre l'Appel",
-    generateReports: "Générer des Rapports",
-    profileSettings: "Paramètres du Profil",
-    loading: "Chargement",
-    noData: "Aucune donnée disponible",
-    cancel: "Annuler",
   },
   en: {
     dashboard: "Dashboard",
-    classes: "Classes",
+    classes: "My Classes",
     students: "Students",
+    courses: "My Courses",
     assignments: "Assignments",
     grades: "Grades",
     attendance: "Attendance",
     reports: "Reports",
+    messages: "Messages",
     settings: "Settings",
     logout: "Logout",
-    search: "Search students, assignments...",
+    search: "Search...",
     teacher: "Teacher",
-    welcome: "Welcome",
-    myClasses: "My Classes",
-    manageStudents: "Manage Students",
-    createAssignment: "Create Assignment",
-    viewGrades: "View Grades",
-    takeAttendance: "Take Attendance",
-    generateReports: "Generate Reports",
-    profileSettings: "Profile Settings",
-    loading: "Loading",
-    noData: "No data available",
-    cancel: "Cancel",
   },
 };
 
@@ -76,58 +57,91 @@ function useTranslation(language: "fr" | "en") {
   return translations[language];
 }
 
-/* ---------------- Responsive Hook ---------------- */
-
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(false);
-
   useEffect(() => {
-    const mediaQuery = window.matchMedia(`(max-width: ${breakpoint}px)`);
-
-    const handleChange = () => setIsMobile(mediaQuery.matches);
-
-    handleChange();
-    mediaQuery.addEventListener("change", handleChange);
-
-    return () => mediaQuery.removeEventListener("change", handleChange);
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const handler = () => setIsMobile(mq.matches);
+    handler();
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
   }, [breakpoint]);
-
   return isMobile;
 }
 
-/* ---------------- Component ---------------- */
-
-export default function TeacherLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function TeacherLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [language, setLanguage] = useState<"fr" | "en">("fr");
+  const [teacherName, setTeacherName] = useState("Enseignant");
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
   const t = useTranslation(language);
   const isMobile = useIsMobile();
 
+  useEffect(() => {
+    try {
+      const userStr = localStorage.getItem("user");
+      if (userStr) {
+        const u = JSON.parse(userStr);
+        if (u.name) setTeacherName(u.name);
+      }
+    } catch {}
+  }, []);
+
+  // Fetch unread message count
+  useEffect(() => {
+    const fetchUnread = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        const res = await fetch("/api/messages/unread-count", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUnreadMessages(data.unread || 0);
+        }
+      } catch {}
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("school_id");
+    localStorage.removeItem("school_type");
+    router.push("/login");
+  };
+
   const menu = [
     { name: t.dashboard, href: "/dashboard/teacher", icon: <FaTachometerAlt /> },
     { name: t.classes, href: "/dashboard/teacher/classes", icon: <FaChalkboardTeacher /> },
+    { name: t.courses, href: "/dashboard/teacher/courses", icon: <FaBook /> },
     { name: t.students, href: "/dashboard/teacher/students", icon: <FaUserGraduate /> },
     { name: t.assignments, href: "/dashboard/teacher/assignments", icon: <FaClipboardList /> },
     { name: t.grades, href: "/dashboard/teacher/grades", icon: <FaBook /> },
     { name: t.attendance, href: "/dashboard/teacher/attendance", icon: <FaCalendarAlt /> },
     { name: t.reports, href: "/dashboard/teacher/reports", icon: <FaChartBar /> },
+    {
+      name: t.messages,
+      href: "/dashboard/teacher/messages",
+      icon: <FaEnvelope />,
+      badge: unreadMessages > 0 ? unreadMessages : undefined,
+    },
     { name: t.settings, href: "/dashboard/teacher/settings", icon: <FaCog /> },
   ];
 
   return (
     <div className={`teacher-layout ${sidebarOpen ? "" : "sidebar-closed"}`}>
-
       <button className="sidebar-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
         {sidebarOpen ? <FaTimes /> : <FaBars />}
       </button>
 
-      {/* Sidebar */}
       <aside className="teacher-sidebar">
         <div className="teacher-logo">
           📚 SP!K <span>Enseignant</span>
@@ -135,75 +149,72 @@ export default function TeacherLayout({
 
         {isMobile && (
           <div className="sidebar-controls">
-            <input
-              type="text"
-              placeholder={t.search}
-              className="teacher-search"
-            />
+            <input type="text" placeholder={t.search} className="teacher-search" />
           </div>
         )}
 
         <ul className="teacher-menu">
           {menu.map((item) => (
-            <li
-              key={item.href}
-              className={pathname === item.href ? "active" : ""}
-            >
-              <Link href={item.href}>
+            <li key={item.href} className={pathname === item.href ? "active" : ""}>
+              <Link href={item.href} className="menu-link">
                 <span className="icon">{item.icon}</span>
-                {sidebarOpen && item.name}
+                {sidebarOpen && (
+                  <span className="label">
+                    {item.name}
+                    {(item as any).badge && (
+                      <span
+                        style={{
+                          background: "#ef4444",
+                          color: "#fff",
+                          borderRadius: 10,
+                          padding: "1px 7px",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          marginLeft: 8,
+                        }}
+                      >
+                        {(item as any).badge}
+                      </span>
+                    )}
+                  </span>
+                )}
               </Link>
             </li>
           ))}
         </ul>
 
-        <div className="logout">
+        <div className="logout" onClick={handleLogout} style={{ cursor: "pointer" }}>
           <FaSignOutAlt /> {sidebarOpen && t.logout}
         </div>
       </aside>
 
-      {/* Main */}
       <div className="teacher-main">
         <header className="teacher-topbar">
-
           <div className="topbar-left">
             {!sidebarOpen && (
-              <div className="teacher-logo" style={{ fontSize: '18px', marginBottom: '0', marginRight: '20px' }}>
-                📚 SP!K <span style={{ fontSize: '11px' }}>Enseignant</span>
+              <div className="teacher-logo small">
+                📚 SP!K <span>Enseignant</span>
               </div>
             )}
-            {!isMobile && (
-              <input
-                type="text"
-                placeholder={t.search}
-                className="teacher-search"
-              />
-            )}
+            {!isMobile && <input type="text" placeholder={t.search} className="teacher-search" />}
           </div>
 
           <div className="topbar-right">
             <div className="language-selector">
-              <button
-                onClick={() => setLanguage(language === "fr" ? "en" : "fr")}
-                className="language-btn"
-              >
+              <button onClick={() => setLanguage(language === "fr" ? "en" : "fr")} className="language-btn">
                 {language === "fr" ? "EN" : "FR"}
               </button>
             </div>
 
-            <div className="notification-icon">
+            <Link href="/dashboard/teacher/messages" className="notification-icon" style={{ position: "relative", textDecoration: "none", color: "inherit" }}>
               <FaBell />
-              <span className="notification-badge">3</span>
-            </div>
+              {unreadMessages > 0 && <span className="notification-badge">{unreadMessages}</span>}
+            </Link>
 
             <div className="teacher-profile">
-              <img
-                src="https://i.pravatar.cc/40"
-                alt="profile"
-                className="avatar"
-              />
+              <img src="https://i.pravatar.cc/40" alt="profile" className="avatar" />
               <div className="profile-info">
-                <strong>Enseignant</strong>
+                <strong>{teacherName}</strong>
                 <p>{t.teacher}</p>
               </div>
             </div>

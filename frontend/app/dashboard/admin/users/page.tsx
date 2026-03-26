@@ -47,7 +47,8 @@ export default function AdminUsersPage() {
     school: "",
     status: "active",
     profile_image: "",
-  });
+    admin_level: "",
+  } as any);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [schools, setSchools] = useState<School[]>([]);
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
@@ -84,7 +85,8 @@ export default function AdminUsersPage() {
       school: "",
       status: "active",
       profile_image: "",
-    });
+      admin_level: "",
+    } as any);
   };
 
   // ================= FETCH USERS =================
@@ -111,19 +113,23 @@ export default function AdminUsersPage() {
         throw new Error("Invalid response from server");
       }
       
-      const transformedUsers = data.users.map((user: any) => ({
-        id: user.id?.toString() || "",
-        name: user.name || "",
-        email: user.email || "",
-        role: user.role || "",
-        status: user.status || "active",
-        school: user.school_id || "",
-        profile_image: user.profile_image || "",
-        unique_id: user.unique_id || "",
-        createdAt: user.created_at
-          ? new Date(user.created_at).toLocaleDateString()
-          : "",
-      }));
+      const transformedUsers = data.users.map((user: any) => {
+        const raw = user.profile_image || "";
+        const profile_image = raw && !raw.startsWith('http') ? `${API_URL}${raw}` : raw;
+        return {
+          id: user.id?.toString() || "",
+          name: user.name || "",
+          email: user.email || "",
+          role: user.role || "",
+          status: user.status || "active",
+          school: user.school_id || "",
+          profile_image,
+          unique_id: user.unique_id || "",
+          createdAt: user.created_at
+            ? new Date(user.created_at).toLocaleDateString()
+            : "",
+        };
+      });
       console.log("Transformed users:", transformedUsers);
       setUsers(transformedUsers);
     } catch (err) {
@@ -140,11 +146,34 @@ export default function AdminUsersPage() {
     if (!editingUser) return;
     try {
       console.log("Updating user:", editingUser);
+
+      // If a new image was selected in the modal, upload it first and store URL.
+      let profileImageUrl: string | null | undefined = (editingUser as any).profile_image;
+      const file = (editingUser as any).profile_image_file as File | undefined;
+      if (file) {
+        const token = localStorage.getItem('token');
+        const fd = new FormData();
+        fd.append('file', file);
+
+        const upRes = await fetch(`${API_URL}/api/uploads/profile-image`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token || ''}` },
+          body: fd
+        });
+        const upBody = await upRes.json().catch(() => ({}));
+        if (!upRes.ok) {
+          throw new Error(upBody.error || upBody.message || 'Failed to upload profile image');
+        }
+        const url = upBody.url as string;
+        profileImageUrl = url?.startsWith('http') ? url : `${API_URL}${url}`;
+      }
+
       const response = await fetch(`${API_URL}/api/users/${editingUser.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...editingUser,
+          profile_image: profileImageUrl,
           id: parseInt(editingUser.id) // Ensure ID is sent as number
         }),
       });
@@ -174,15 +203,39 @@ export default function AdminUsersPage() {
       console.log("Creating user with data:", formData);
       
       // Prepare the data to send to backend
+      // If an image was selected, upload it first and store the returned URL.
+      let profileImageUrl: string | null = null;
+      const file = (formData as any).profile_image_file as File | undefined;
+      if (file) {
+        const token = localStorage.getItem('token');
+        const fd = new FormData();
+        fd.append('file', file);
+
+        const upRes = await fetch(`${API_URL}/api/uploads/profile-image`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token || ''}` },
+          body: fd
+        });
+        const upBody = await upRes.json().catch(() => ({}));
+        if (!upRes.ok) {
+          throw new Error(upBody.error || upBody.message || 'Failed to upload profile image');
+        }
+        const url = upBody.url as string;
+        profileImageUrl = url?.startsWith('http') ? url : `${API_URL}${url}`;
+      }
+
       const requestData = {
         name: formData.name,
         email: formData.email,
         role: formData.role,
         password: formData.password,
         status: formData.status,
-        profile_image: formData.profile_image,
+        // Store URL (not base64) to avoid MySQL packet issues
+        profile_image: profileImageUrl,
         // Only include school if it's not SUPER_ADMIN
-        school_id: formData.role === "SUPER_ADMIN" ? null : formData.school
+        school_id: formData.role === "SUPER_ADMIN" ? null : formData.school,
+        // For SCHOOL_ADMIN: specify which level they manage
+        admin_level: formData.role === "SCHOOL_ADMIN" ? (formData as any).admin_level : null
       };
       
       console.log("Sending request data:", requestData);
@@ -469,6 +522,31 @@ export default function AdminUsersPage() {
                 </div>
               )}
 
+              {/* Admin level - only for SCHOOL_ADMIN */}
+              {((editingUser?.role === "SCHOOL_ADMIN") || (formData.role === "SCHOOL_ADMIN")) && (
+                <div className="form-group">
+                  <label>Admin Level</label>
+                  <select
+                    value={(editingUser as any)?.admin_level || (formData as any).admin_level || ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (editingUser) {
+                        setEditingUser({ ...(editingUser as any), admin_level: v } as any);
+                      } else {
+                        setFormData({ ...(formData as any), admin_level: v } as any);
+                      }
+                    }}
+                    required
+                  >
+                    <option value="">Select level</option>
+                    <option value="maternelle">Maternelle</option>
+                    <option value="primaire">Primaire</option>
+                    <option value="secondaire">Secondaire</option>
+                  </select>
+                  <small className="form-hint">Choose which level this school admin manages</small>
+                </div>
+              )}
+
               {/* Status */}
               <div className="form-group">
                 <label>Status</label>
@@ -488,10 +566,10 @@ export default function AdminUsersPage() {
               {/* Profile Image */}
               <div className="form-group">
                 <label>Profile Image</label>
-                {editingUser && editingUser.profile_image && (
+                {editingUser && (editingUser as any).profile_image && (
                   <div className="current-profile-image">
                     <p>Current Profile Image:</p>
-                    <img src={editingUser.profile_image} alt="Current Profile" className="current-profile-thumb" />
+                    <img src={(editingUser as any).profile_image} alt="Current Profile" className="current-profile-thumb" />
                   </div>
                 )}
                 <input
@@ -500,17 +578,14 @@ export default function AdminUsersPage() {
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                      const base64 = reader.result as string;
-                      editingUser
-                        ? setEditingUser({ ...editingUser, profile_image: base64 })
-                        : setFormData({ ...formData, profile_image: base64 });
-                    };
-                    reader.readAsDataURL(file);
+                    if (editingUser) {
+                      setEditingUser({ ...(editingUser as any), profile_image_file: file } as any);
+                    } else {
+                      setFormData({ ...(formData as any), profile_image_file: file } as any);
+                    }
                   }}
                 />
-                <small className="form-hint">Select a new image to update the profile picture</small>
+                <small className="form-hint">Image will be uploaded and saved as a URL (recommended)</small>
               </div>
 
               {/* ACTIONS */}

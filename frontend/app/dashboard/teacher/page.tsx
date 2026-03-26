@@ -308,17 +308,19 @@ export default function TeacherDashboard() {
     setLoading(true);
     setError("");
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/api/teachers/profile`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      if (!response.ok) {
-        throw new Error("Failed to fetch teacher info");
+      // Load teacher info from localStorage (stored at login)
+      const userStr = localStorage.getItem("user");
+      if (userStr) {
+        const u = JSON.parse(userStr);
+        setTeacher({
+          id: u.id?.toString() || "",
+          name: u.name || "",
+          email: u.email || "",
+          role: u.role || "TEACHER",
+          school_id: u.school_id?.toString() || "",
+          profile_image: u.profile_image || "",
+        });
       }
-      
-      const data = await response.json();
-      setTeacher(data.teacher);
       calculateStats();
     } catch (err) {
       console.error("Fetch teacher error:", err);

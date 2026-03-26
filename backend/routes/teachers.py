@@ -12,16 +12,30 @@ def ensure_courses_table():
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS courses (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                teacher_id INT NOT NULL,
+                teacher_id INT NULL,
                 school_id INT,
                 name VARCHAR(255) NOT NULL,
                 description TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 INDEX (teacher_id),
                 INDEX (school_id),
-                FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE
+                FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS course_classes (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                course_id INT NOT NULL,
+                class_id INT NOT NULL,
+                UNIQUE KEY uniq_course_class (course_id, class_id),
+                INDEX (course_id),
+                INDEX (class_id),
+                FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+                FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        """)
+
     conn.commit()
 
 
@@ -278,7 +292,14 @@ def list_teachers():
 
 @teachers_bp.route('/teachers/<int:teacher_id>/courses', methods=['POST'])
 def create_course(teacher_id):
-    """Create a course for a teacher. SCHOOL_ADMIN only."""
+    """Create a course for a teacher. SCHOOL_ADMIN only.
+
+    Accepts JSON:
+      - name: string (required)
+      - description: string (optional)
+      - school_id: int (optional)
+      - classes: int[] (optional)  -> a course can belong to multiple classes
+    """
     try:
         requester = get_requester_from_auth()
         if not requester or requester.get('role') != 'SCHOOL_ADMIN':
@@ -288,6 +309,7 @@ def create_course(teacher_id):
         name = data.get('name')
         description = data.get('description')
         school_id = data.get('school_id')
+        class_ids = data.get('classes') or []
 
         if not name:
             return jsonify({'error': 'Course name required'}), 400
@@ -300,11 +322,23 @@ def create_course(teacher_id):
         ensure_courses_table()
         conn = get_connection()
         with conn.cursor() as cursor:
-            cursor.execute("INSERT INTO courses (teacher_id, school_id, name, description) VALUES (%s, %s, %s, %s)", (teacher_id, school_id or teacher.school_id, name, description))
+            cursor.execute(
+                "INSERT INTO courses (teacher_id, school_id, name, description) VALUES (%s, %s, %s, %s)",
+                (teacher_id, school_id or teacher.school_id, name, description)
+            )
             conn.commit()
             course_id = cursor.lastrowid
+
+            # attach classes (optional)
+            for cid in class_ids:
+                cursor.execute("INSERT IGNORE INTO course_classes (course_id, class_id) VALUES (%s, %s)", (course_id, cid))
+            conn.commit()
+
             cursor.execute("SELECT id, teacher_id, school_id, name, description, created_at FROM courses WHERE id=%s", (course_id,))
             course = cursor.fetchone()
+            cursor.execute("SELECT cc.class_id, c.name FROM course_classes cc JOIN classes c ON c.id=cc.class_id WHERE cc.course_id=%s", (course_id,))
+            course['classes'] = cursor.fetchall()
+
         return jsonify({'course': course}), 201
     except Exception as e:
         traceback.print_exc()

@@ -7,15 +7,14 @@ classes_bp = Blueprint('classes', __name__)
 
 @classes_bp.route("/<int:class_id>/assign-teacher", methods=["POST"])
 def assign_teacher_to_class(class_id):
-    """Associate an existing teacher to a class (creates row in teacher_classes).
+    """Set the main teacher (professeur principal / titulaire) for a class.
+
+    This is separate from course-based teacher assignments (teacher_classes).
+    The main teacher is stored in classes.main_teacher_id.
 
     Expected JSON:
       - teacher_id: int (required)
       - created_by: int (required, must be SCHOOL_ADMIN of same school)
-
-    Notes:
-      - Validates teacher belongs to same school and has role TEACHER.
-      - Prevents duplicate associations.
     """
     data = request.json or {}
     teacher_id = data.get("teacher_id")
@@ -52,42 +51,22 @@ def assign_teacher_to_class(class_id):
         if str(teacher.school_id) != str(cls['school_id']):
             return jsonify({"error": "Teacher does not belong to this school"}), 400
 
-        # Create teacher_classes table if missing and insert association
+        # Ensure main_teacher_id column exists
         conn = get_connection()
         with conn.cursor() as cursor:
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS teacher_classes (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    teacher_id INT NOT NULL,
-                    class_id INT NOT NULL,
-                    UNIQUE KEY uniq_teacher_class (teacher_id, class_id),
-                    INDEX (teacher_id),
-                    INDEX (class_id),
-                    FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-            """)
-
-            cursor.execute(
-                "SELECT id FROM teacher_classes WHERE teacher_id=%s AND class_id=%s",
-                (teacher_id, class_id)
-            )
-            existing = cursor.fetchone()
-            if existing:
-                # keep users.class_id in sync for compatibility
-                cursor.execute("UPDATE users SET class_id=%s WHERE id=%s", (class_id, teacher_id))
+            cursor.execute("SHOW COLUMNS FROM classes LIKE 'main_teacher_id'")
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE classes ADD COLUMN main_teacher_id INT NULL")
                 conn.commit()
-                return jsonify({"message": "Teacher already assigned to this class"}), 200
 
-            cursor.execute(
-                "INSERT INTO teacher_classes (teacher_id, class_id) VALUES (%s, %s)",
-                (teacher_id, class_id)
-            )
-            # keep users.class_id in sync for compatibility
-            cursor.execute("UPDATE users SET class_id=%s WHERE id=%s", (class_id, teacher_id))
+            # Set the main teacher (replaces previous if any)
+            cursor.execute("UPDATE classes SET main_teacher_id=%s WHERE id=%s", (teacher_id, class_id))
             conn.commit()
 
-        return jsonify({"message": "Teacher assigned successfully"}), 201
+            # Get teacher name for response
+            teacher_name = teacher.name
+
+        return jsonify({"message": f"Professeur principal assigned: {teacher_name}"}), 200
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -101,7 +80,34 @@ def get_classes():
         return jsonify({"error": "school_id is required"}), 400
     try:
         classes = ClassModel.get_by_school(school_id, level=level)
-        return jsonify({"classes": [c.to_dict() for c in classes]})
+
+        # DB debug: helps detect when Flask is connected to a different DB than phpMyAdmin.
+        from db import get_connection
+        conn = get_connection()
+        db_name = None
+        db_host = None
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT DATABASE() AS db")
+                row = cursor.fetchone()
+                db_name = row.get('db') if row else None
+        except Exception:
+            pass
+        try:
+            db_host = getattr(conn, 'host', None)
+        except Exception:
+            db_host = None
+
+        return jsonify({
+            "classes": [c.to_dict() for c in classes],
+            "debug": {
+                "school_id": school_id,
+                "level": level,
+                "count": len(classes),
+                "db": db_name,
+                "db_host": db_host,
+            }
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -131,7 +137,14 @@ def create_class():
         school = School.get_by_id(school_id)
         if not school:
             return jsonify({"error": "School not found"}), 404
-        allowed = get_allowed_class_names(school.school_type)
+
+        # Prefer explicit 'level' sent by the UI (primaire/secondaire/maternelle).
+        # Fallback to school.school_type for backward compatibility.
+        effective_level = (level or school.school_type or '').strip().lower()
+        if effective_level in ('secondary',):
+            effective_level = 'secondaire'
+
+        allowed = get_allowed_class_names(effective_level)
         if not allowed:
             return jsonify({"error": "School type not set or invalid"}), 400
 

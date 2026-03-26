@@ -8,10 +8,9 @@ users_bp = Blueprint('users', __name__)
 def get_users():
     try:
         school_id = request.args.get("school_id")
-        requester_id = request.args.get("requester_id")
-        requester_role = request.args.get("requester_role")
-        users = User.get_all(school_id=school_id, requester_id=requester_id, requester_role=requester_role)  # Returns list of User instances
-        print(f"[DEBUG] Fetched {len(users)} users")  # Debug
+        # For SCHOOL_ADMIN, show all users in their school (no restrictions)
+        users = User.get_all(school_id=school_id, include_super_admin=False)  # Returns list of User instances
+        print(f"[DEBUG] Fetched {len(users)} users for school_id={school_id}")  # Debug
         users_json = [user.to_dict() for user in users]
         return jsonify({"users": users_json})
     except Exception as e:
@@ -43,7 +42,8 @@ def create_user():
             role=data.get("role", "TEACHER"),
             school_id=data.get("school_id"),
             class_id=data.get("class_id"),
-            created_by=requester_id
+            created_by=requester_id,
+            admin_level=data.get("admin_level")
         )
         
         update_args = {}
@@ -83,7 +83,8 @@ def update_user(user_id):
             "role": data.get("role"),
             "password": data.get("password"),
             "school_id": data.get("school_id"),
-            "profile_image": profile_image
+            "profile_image": profile_image,
+            "admin_level": data.get("admin_level")
         }
         
         if "class_id" in data:

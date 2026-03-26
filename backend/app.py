@@ -5,13 +5,21 @@ from routes.users import users_bp
 from routes.schools import schools_bp
 from routes.classes import classes_bp
 from routes.teachers import teachers_bp, ensure_courses_table
+from routes.courses import courses_bp
+from routes.messages import messages_bp
 from utils.create_super_admin import create_super_admin
+from routes.uploads import uploads_bp
 
 app = Flask(__name__)
 
 # ------------------- CORS -------------------
-CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-     supports_credentials=True)
+# Allow all /api/* routes including file uploads.
+CORS(
+    app,
+    resources={r"/api/*": {"origins": "*"}},
+    supports_credentials=False,
+    allow_headers=["Content-Type", "Authorization"],
+)
 
 # ------------------- Super Admin -------------------
 create_super_admin()
@@ -23,8 +31,17 @@ def ensure_school_type_column():
     try:
         conn = _get_conn()
         with conn.cursor() as cursor:
-            cursor.execute("ALTER TABLE schools ADD COLUMN IF NOT EXISTS school_type VARCHAR(50) NULL")
-            conn.commit()
+            # MySQL doesn't support "ADD COLUMN IF NOT EXISTS" in many versions.
+            # We do a safe check + add.
+            cursor.execute("SHOW COLUMNS FROM schools LIKE 'school_type'")
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE schools ADD COLUMN school_type VARCHAR(50) NULL")
+                conn.commit()
+
+            cursor.execute("SHOW COLUMNS FROM users LIKE 'admin_level'")
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN admin_level VARCHAR(50) NULL")
+                conn.commit()
     except Exception:
         # Fallback for older MySQL versions: check existence then add
         try:
@@ -69,6 +86,9 @@ except Exception:
     # If ensure function fails for any reason, continue without crashing
     pass
 app.register_blueprint(teachers_bp, url_prefix="/api")
+app.register_blueprint(courses_bp, url_prefix="/api")
+app.register_blueprint(messages_bp, url_prefix="/api")
+app.register_blueprint(uploads_bp, url_prefix="/api")
 
 # ------------------- Test Route -------------------
 @app.route('/test')
