@@ -12,10 +12,20 @@ const Toast = ({ message, type, onClose }: { message: string; type: string; onCl
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
+// Predefined maternelle class names (must match backend MATERNELLE_CLASSES)
+const MATERNELLE_BASE_NAMES = [
+  "1ere maternelle",
+  "2eme maternelle",
+  "3eme maternelle",
+];
+
 type ClassData = {
   id: string;
   name: string;
   school_id: string;
+  level: string;
+  main_teacher_id: string | null;
+  main_teacher_name: string | null;
   createdAt: string;
 };
 
@@ -26,7 +36,8 @@ export default function MaternelleClassesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showModal, setShowModal] = useState(false);
-  const [className, setClassName] = useState("");
+  const [selectedBase, setSelectedBase] = useState("");
+  const [suffix, setSuffix] = useState("");
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
   const [currentUser, setCurrentUser] = useState<any>(null);
 
@@ -53,7 +64,16 @@ export default function MaternelleClassesPage() {
       const response = await fetch(`${API_URL}/api/classes/?school_id=${currentUser.school_id}&level=maternelle`);
       if (!response.ok) throw new Error("Failed to fetch classes");
       const data = await response.json();
-      setClasses(data.classes || []);
+      const mapped = (data.classes || []).map((c: any) => ({
+        id: String(c.id),
+        name: c.name,
+        school_id: String(c.school_id),
+        level: c.level || "maternelle",
+        main_teacher_id: c.main_teacher_id ? String(c.main_teacher_id) : null,
+        main_teacher_name: c.main_teacher_name || null,
+        createdAt: c.created_at || "",
+      }));
+      setClasses(mapped);
     } catch (err) {
       console.error(err);
       setError("Could not load classes.");
@@ -118,7 +138,12 @@ export default function MaternelleClassesPage() {
   };
 
   const handleCreateClass = async () => {
-    if (!className.trim()) return;
+    if (!selectedBase) {
+      showToast("Please select a class name", "error");
+      return;
+    }
+    const fullName = suffix.trim() ? `${selectedBase} ${suffix.trim()}` : selectedBase;
+
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(`${API_URL}/api/classes/`, {
@@ -126,7 +151,7 @@ export default function MaternelleClassesPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           school_id: Number(currentUser.school_id),
-          name: className,
+          name: fullName,
           level: "maternelle",
           created_by: currentUser?.id || null,
         }),
@@ -135,7 +160,8 @@ export default function MaternelleClassesPage() {
       if (!response.ok) throw new Error(body.error || body.message || "Failed to create class");
       fetchClasses();
       setShowModal(false);
-      setClassName("");
+      setSelectedBase("");
+      setSuffix("");
       showToast("Class created successfully!");
     } catch (err: any) {
       console.error(err);
@@ -148,7 +174,7 @@ export default function MaternelleClassesPage() {
       <div className="page-header">
         <h1>Classes (Maternelle)</h1>
         <div className="header-actions">
-          <button className="btn-add" onClick={() => setShowModal(true)}>
+          <button className="btn-add" onClick={() => { setSelectedBase(""); setSuffix(""); setShowModal(true); }}>
             + Add Class
           </button>
         </div>
@@ -164,6 +190,7 @@ export default function MaternelleClassesPage() {
               <tr>
                 <th>ID</th>
                 <th>Class Name</th>
+                <th>Main Teacher</th>
                 <th>Created At</th>
                 <th>Assign Teacher</th>
               </tr>
@@ -172,13 +199,21 @@ export default function MaternelleClassesPage() {
               {classes.map((cls) => (
                 <tr key={cls.id}>
                   <td>{cls.id}</td>
-                  <td>{cls.name}</td>
+                  <td><strong>{cls.name}</strong></td>
+                  <td>
+                    {cls.main_teacher_name ? (
+                      <span style={{ color: "#16a34a", fontWeight: 600 }}>{cls.main_teacher_name}</span>
+                    ) : (
+                      <span style={{ color: "#9ca3af", fontStyle: "italic" }}>Not assigned</span>
+                    )}
+                  </td>
                   <td>{cls.createdAt ? new Date(cls.createdAt).toLocaleString() : "-"}</td>
                   <td>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                       <select
                         value={selectedTeacherByClass[cls.id] || ""}
                         onChange={(e) => setSelectedTeacherByClass((prev) => ({ ...prev, [cls.id]: e.target.value }))}
+                        style={{ minWidth: 160 }}
                       >
                         <option value="">Select teacher</option>
                         {teachers.map((t) => (
@@ -199,7 +234,7 @@ export default function MaternelleClassesPage() {
         </div>
       )}
 
-      {!loading && classes.length === 0 && <p className="no-data">No classes found.</p>}
+      {!loading && classes.length === 0 && !error && <p className="no-data">No classes found. Click "+ Add Class" to create one.</p>}
 
       {toast.show && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast({ show: false, message: "", type: "success" })} />
@@ -209,21 +244,50 @@ export default function MaternelleClassesPage() {
         <div className="modal-overlay">
           <div className="modal-content">
             <div className="modal-header">
-              <h2>Add Class</h2>
+              <h2>Add Maternelle Class</h2>
               <button className="modal-close" onClick={() => setShowModal(false)}>
                 ×
               </button>
             </div>
             <div className="user-form">
               <div className="form-group">
-                <label>Class Name</label>
-                <input value={className} onChange={(e) => setClassName(e.target.value)} placeholder="e.g. Petite section" />
+                <label>Select Class *</label>
+                <select
+                  value={selectedBase}
+                  onChange={(e) => setSelectedBase(e.target.value)}
+                  style={{ width: "100%", padding: "12px 15px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14 }}
+                >
+                  <option value="">-- Choose a class --</option>
+                  {MATERNELLE_BASE_NAMES.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
               </div>
+              <div className="form-group">
+                <label>Section / Suffix (optional)</label>
+                <input
+                  value={suffix}
+                  onChange={(e) => setSuffix(e.target.value)}
+                  placeholder="e.g. A, B, C"
+                  style={{ width: "100%", padding: "12px 15px", borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 14 }}
+                />
+                <span className="form-hint">
+                  Add a letter or number to distinguish multiple sections (e.g. "1ere maternelle A")
+                </span>
+              </div>
+              {selectedBase && (
+                <div style={{
+                  background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10,
+                  padding: "10px 14px", marginBottom: 16, fontSize: 14, color: "#166534"
+                }}>
+                  <strong>Preview:</strong> {suffix.trim() ? `${selectedBase} ${suffix.trim()}` : selectedBase}
+                </div>
+              )}
               <div className="form-actions">
                 <button className="btn-cancel" onClick={() => setShowModal(false)}>
                   Cancel
                 </button>
-                <button className="btn-save" onClick={handleCreateClass}>
+                <button className="btn-save" onClick={handleCreateClass} disabled={!selectedBase}>
                   Create Class
                 </button>
               </div>

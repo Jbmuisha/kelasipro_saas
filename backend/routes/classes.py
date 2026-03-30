@@ -1,8 +1,31 @@
 from flask import Blueprint, jsonify, request
-from models import ClassModel, User, School, get_allowed_class_names
+from models import ClassModel, User, School, get_allowed_class_names, PRIMAIRE_CLASSES, SECONDAIRE_CLASSES, MATERNELLE_CLASSES
 import re
 
 classes_bp = Blueprint('classes', __name__)
+
+
+def _ensure_level_column():
+    """Auto-create the 'level' column on the classes table if it doesn't exist."""
+    try:
+        from db import get_connection
+        conn = get_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("SHOW COLUMNS FROM classes LIKE 'level'")
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE classes ADD COLUMN level VARCHAR(50) NULL")
+                conn.commit()
+                print("[MIGRATION] Added 'level' column to classes table")
+    except Exception as e:
+        print(f"[WARN] _ensure_level_column: {e}")
+
+
+@classes_bp.route("/allowed-names", methods=["GET"])
+def get_allowed_names():
+    """Return the predefined class names for a given level (primaire/secondaire/maternelle)."""
+    level = (request.args.get("level") or "").strip().lower()
+    names = get_allowed_class_names(level)
+    return jsonify({"names": names, "level": level})
 
 
 @classes_bp.route("/<int:class_id>/assign-teacher", methods=["POST"])
@@ -79,6 +102,7 @@ def get_classes():
     if not school_id:
         return jsonify({"error": "school_id is required"}), 400
     try:
+        _ensure_level_column()
         classes = ClassModel.get_by_school(school_id, level=level)
 
         # DB debug: helps detect when Flask is connected to a different DB than phpMyAdmin.
@@ -124,6 +148,8 @@ def create_class():
         return jsonify({"error": "school_id, name and created_by are required"}), 400
 
     try:
+        _ensure_level_column()
+
         # Verify requester
         requester = User.get_by_id(created_by)
         if not requester:

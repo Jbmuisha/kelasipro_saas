@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import "../../styles/login.css";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -15,9 +17,10 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
 
-    // Vérifie que l'email est Gmail si c'est un email
-    if (email.includes("@") && !email.endsWith("@gmail.com")) {
-      setError("Vous devez utiliser une adresse Gmail pour vous connecter avec un email.");
+    const identifier = email.trim();
+
+    if (!identifier) {
+      setError("Veuillez entrer votre email ou ID.");
       return;
     }
 
@@ -29,50 +32,61 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:5000/api/auth/login", {
+      const res = await fetch(`${API_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: identifier, password }),
       });
 
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        console.error("[LOGIN] Failed to parse response:", jsonErr);
+        setError("Erreur serveur. Réponse invalide.");
+        setLoading(false);
+        return;
+      }
 
       if (!res.ok) {
-        // Affiche l'erreur reçue du backend
         setError(data.message || "Erreur lors de la connexion.");
         console.log(`[LOGIN FAILED] ${data.message || "Unknown error"}`);
       } else {
-        // Stocke le token dans localStorage
+        // Clear any previous session data
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        localStorage.removeItem("school_id");
+        localStorage.removeItem("school_type");
+
+        // Store new session data
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", JSON.stringify(data.user));
-        console.log(`[LOGIN SUCCESS] User logged in: ${email}`);
 
-        // Redirection selon le rôle
-        switch (data.user.role) {
-          case "SUPER_ADMIN":
-            router.push("/dashboard/admin");
-            break;
-          case "SCHOOL_ADMIN":
-            router.push("/dashboard/school");
-            break;
-          case "TEACHER":
-            router.push("/dashboard/teacher");
-            break;
-          case "STUDENT":
-            router.push("/dashboard/student");
-            break;
-          case "SECRETARY":
-            router.push("/dashboard/secretary");
-            break;
-          case "PARENT":
-            router.push("/dashboard/parent");
-            break;
-          case "ASSISTANT":
-            router.push("/dashboard/assistant");
-            break;
-          default:
-            router.push("/");
+        if (data.user.school_id) {
+          localStorage.setItem("school_id", String(data.user.school_id));
         }
+
+        // Store admin_level as school_type if available
+        if (data.user.admin_level) {
+          localStorage.setItem("school_type", data.user.admin_level);
+        }
+
+        console.log(`[LOGIN SUCCESS] User: ${identifier}, Role: ${data.user.role}`);
+
+        // Redirect based on role
+        const role = data.user.role;
+        const routes: Record<string, string> = {
+          SUPER_ADMIN: "/dashboard/admin",
+          SCHOOL_ADMIN: "/dashboard/school",
+          TEACHER: "/dashboard/teacher",
+          STUDENT: "/dashboard/student",
+          SECRETARY: "/dashboard/secretary",
+          PARENT: "/dashboard/parent",
+          ASSISTANT: "/dashboard/assistant",
+        };
+
+        const destination = routes[role] || "/";
+        router.push(destination);
       }
     } catch (err) {
       console.error("[LOGIN ERROR]", err);
@@ -89,7 +103,7 @@ export default function LoginPage() {
         <form onSubmit={handleLogin}>
           <input
             type="text"
-            placeholder="Email ou ID (ex: 2026xxxx)"
+            placeholder="Email ou ID (ex: 2026xxx)"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required

@@ -125,9 +125,8 @@ export default function SecretaryLayout({
 
   const menu = [
     { name: t.dashboard, href: "/dashboard/secretary", icon: <FaTachometerAlt /> },
-    { name: "All Users", href: "/dashboard/secretary/users", icon: <FaChalkboardTeacher /> },
-    { name: t.classes, href: "/dashboard/secretary/classes", icon: <FaSchool /> },
-    { name: t.settings, href: "/dashboard/secretary/settings", icon: <FaCog /> },
+    { name: t.students, href: "/dashboard/secretary/students", icon: <FaUserGraduate /> },
+    { name: "Mon Profil", href: "/dashboard/secretary/profile", icon: <FaCog /> },
   ];
 
   return (
@@ -167,7 +166,13 @@ export default function SecretaryLayout({
           ))}
         </ul>
 
-        <div className="logout">
+        <div className="logout" onClick={() => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          localStorage.removeItem('school_id');
+          localStorage.removeItem('school_type');
+          window.location.href = '/login';
+        }} style={{ cursor: 'pointer' }}>
           <FaSignOutAlt /> {sidebarOpen && t.logout}
         </div>
       </aside>

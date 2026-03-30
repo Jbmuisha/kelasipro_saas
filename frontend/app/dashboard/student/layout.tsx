@@ -78,6 +78,7 @@ export default function StudentLayout({
   const menu = [
     { name: t.dashboard, href: "/dashboard/student", icon: <FaTachometerAlt /> },
     { name: t.courses, href: "/dashboard/student/courses", icon: <FaBook /> },
+    { name: language === "fr" ? "Bulletin" : "Report Card", href: "/dashboard/student/bulletin", icon: <FaChartBar /> },
     { name: t.profile, href: "/dashboard/student/profile", icon: <FaUserGraduate /> },
     { name: t.schedule, href: "/dashboard/student/schedule", icon: <FaCalendarAlt /> },
     { name: t.reports, href: "/dashboard/student/reports", icon: <FaChartBar /> },
@@ -119,7 +120,13 @@ export default function StudentLayout({
           ))}
         </ul>
 
-        <div className="logout">
+        <div className="logout" onClick={() => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          localStorage.removeItem('school_id');
+          localStorage.removeItem('school_type');
+          window.location.href = '/login';
+        }} style={{ cursor: 'pointer' }}>
           <FaSignOutAlt /> {sidebarOpen && t.logout}
         </div>
       </aside>

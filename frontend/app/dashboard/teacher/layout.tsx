@@ -10,6 +10,7 @@ import {
   FaClipboardList,
   FaCalendarAlt,
   FaChartBar,
+  FaPencilAlt,
   FaBell,
   FaCog,
   FaSignOutAlt,
@@ -115,25 +116,22 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     localStorage.removeItem("user");
     localStorage.removeItem("school_id");
     localStorage.removeItem("school_type");
-    router.push("/login");
+    window.location.href = "/login";
   };
 
   const menu = [
     { name: t.dashboard, href: "/dashboard/teacher", icon: <FaTachometerAlt /> },
     { name: t.classes, href: "/dashboard/teacher/classes", icon: <FaChalkboardTeacher /> },
-    { name: t.courses, href: "/dashboard/teacher/courses", icon: <FaBook /> },
     { name: t.students, href: "/dashboard/teacher/students", icon: <FaUserGraduate /> },
-    { name: t.assignments, href: "/dashboard/teacher/assignments", icon: <FaClipboardList /> },
-    { name: t.grades, href: "/dashboard/teacher/grades", icon: <FaBook /> },
+    { name: t.grades, href: "/dashboard/teacher/grades", icon: <FaPencilAlt /> },
     { name: t.attendance, href: "/dashboard/teacher/attendance", icon: <FaCalendarAlt /> },
-    { name: t.reports, href: "/dashboard/teacher/reports", icon: <FaChartBar /> },
     {
       name: t.messages,
       href: "/dashboard/teacher/messages",
       icon: <FaEnvelope />,
       badge: unreadMessages > 0 ? unreadMessages : undefined,
     },
-    { name: t.settings, href: "/dashboard/teacher/settings", icon: <FaCog /> },
+    { name: "Mon Profil", href: "/dashboard/teacher/profile", icon: <FaCog /> },
   ];
 
   return (

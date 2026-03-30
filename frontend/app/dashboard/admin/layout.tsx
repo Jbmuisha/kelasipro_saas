@@ -178,7 +178,13 @@ export default function SuperAdminLayout({
           ))}
         </ul>
 
-        <div className="logout">
+        <div className="logout" onClick={() => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          localStorage.removeItem('school_id');
+          localStorage.removeItem('school_type');
+          window.location.href = '/login';
+        }} style={{ cursor: 'pointer' }}>
           <FaSignOutAlt /> {sidebarOpen && t.logout}
         </div>
       </aside>

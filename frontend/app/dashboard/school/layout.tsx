@@ -31,6 +31,7 @@ const translations = {
     users: "Utilisateurs",
     secretary: "Secrétaire",
     courses: "Cours",
+    schedule: "Horaire",
     payments: "Paiements",
     messages: "Messages",
   },
@@ -47,6 +48,7 @@ const translations = {
     users: "Users",
     secretary: "Secretary",
     courses: "Courses",
+    schedule: "Schedule",
     payments: "Payments",
     messages: "Messages",
   },
@@ -122,6 +124,8 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
     { name: t.teachers, href: "/dashboard/school/teachers", icon: <FaChalkboardTeacher /> },
     { name: t.secretary, href: "/dashboard/school/secretary", icon: <FaUserGraduate /> },
     { name: t.courses, href: "/dashboard/school/courses", icon: <FaChartBar /> },
+    { name: "Notes", href: "/dashboard/school/grades", icon: <FaChartBar /> },
+    { name: t.schedule, href: "/dashboard/school/schedule", icon: <FaCog /> },
     { name: t.payments, href: "/dashboard/school/payments", icon: <FaChartBar /> },
     { name: t.messages, href: "/dashboard/school/messages", icon: <FaBell /> },
   ];
@@ -131,6 +135,7 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
     { name: t.teachers, href: "/dashboard/school/teachers", icon: <FaChalkboardTeacher /> },
     { name: t.secretary, href: "/dashboard/school/secretary", icon: <FaUserGraduate /> },
     { name: t.courses, href: "/dashboard/school/courses", icon: <FaChartBar /> },
+    { name: t.schedule, href: "/dashboard/school/schedule", icon: <FaCog /> },
     { name: t.payments, href: "/dashboard/school/payments", icon: <FaChartBar /> },
     { name: t.messages, href: "/dashboard/school/messages", icon: <FaBell /> },
   ];

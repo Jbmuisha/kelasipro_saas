@@ -51,7 +51,15 @@ export default function SchoolTeachersPage() {
       const res = await fetch(`/api/teachers?school_id=${schoolId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (res.status === 401 || res.status === 403) throw new Error('Unauthorized: please login again');
+      if (res.status === 401 || res.status === 403) {
+        // Token expired or invalid — force re-login
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('school_id');
+        localStorage.removeItem('school_type');
+        window.location.href = '/login';
+        return;
+      }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || body.message || 'Failed to load teachers');

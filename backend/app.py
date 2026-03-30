@@ -7,6 +7,8 @@ from routes.classes import classes_bp
 from routes.teachers import teachers_bp, ensure_courses_table
 from routes.courses import courses_bp
 from routes.messages import messages_bp
+from routes.schedules import schedules_bp
+from routes.grades import grades_bp
 from utils.create_super_admin import create_super_admin
 from routes.uploads import uploads_bp
 
@@ -21,18 +23,16 @@ CORS(
     allow_headers=["Content-Type", "Authorization"],
 )
 
-# ------------------- Super Admin -------------------
+
 create_super_admin()
 
-# ------------------- Ensure DB migrations -------------------
+
 def ensure_school_type_column():
     from db import get_connection as _get_conn
-    # Try modern ALTER TABLE ... IF NOT EXISTS first (MySQL 8+)
+   
     try:
         conn = _get_conn()
         with conn.cursor() as cursor:
-            # MySQL doesn't support "ADD COLUMN IF NOT EXISTS" in many versions.
-            # We do a safe check + add.
             cursor.execute("SHOW COLUMNS FROM schools LIKE 'school_type'")
             if not cursor.fetchone():
                 cursor.execute("ALTER TABLE schools ADD COLUMN school_type VARCHAR(50) NULL")
@@ -43,7 +43,7 @@ def ensure_school_type_column():
                 cursor.execute("ALTER TABLE users ADD COLUMN admin_level VARCHAR(50) NULL")
                 conn.commit()
     except Exception:
-        # Fallback for older MySQL versions: check existence then add
+       
         try:
             conn = _get_conn()
             with conn.cursor() as cursor:
@@ -89,6 +89,8 @@ app.register_blueprint(teachers_bp, url_prefix="/api")
 app.register_blueprint(courses_bp, url_prefix="/api")
 app.register_blueprint(messages_bp, url_prefix="/api")
 app.register_blueprint(uploads_bp, url_prefix="/api")
+app.register_blueprint(schedules_bp, url_prefix="/api")
+app.register_blueprint(grades_bp, url_prefix="/api")
 
 # ------------------- Test Route -------------------
 @app.route('/test')

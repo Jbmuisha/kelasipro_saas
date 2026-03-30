@@ -421,6 +421,12 @@ class ClassModel:
 
 
 # Helper utilities for school types and allowed classes
+MATERNELLE_CLASSES = [
+    "1ere maternelle",
+    "2eme maternelle",
+    "3eme maternelle",
+]
+
 PRIMAIRE_CLASSES = [
     "1ere primaire",
     "2eme primaire",
@@ -441,13 +447,16 @@ SECONDAIRE_CLASSES = [
 
 
 def get_allowed_class_names(school_type):
-    """Return allowed base class names for a given school_type ("primaire" or "secondaire")."""
+    """Return allowed base class names for a given school_type ("primaire", "secondaire", or "maternelle")."""
     if not school_type:
         return []
-    if school_type.lower() == 'primaire' or school_type.lower() == 'primaire'.upper():
+    st = school_type.strip().lower()
+    if st in ('primaire',):
         return PRIMAIRE_CLASSES
-    if school_type.lower() == 'secondaire' or school_type.lower() == 'secondaire'.upper():
+    if st in ('secondaire', 'secondary'):
         return SECONDAIRE_CLASSES
+    if st in ('maternelle',):
+        return MATERNELLE_CLASSES
     return []
 
 

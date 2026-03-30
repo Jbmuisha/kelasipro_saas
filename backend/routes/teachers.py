@@ -46,10 +46,12 @@ def get_requester_from_auth():
     """
     auth_header = request.headers.get('Authorization')
     if not auth_header:
+        print("[AUTH] No Authorization header")
         return None
 
     token = auth_header.replace('Bearer ', '').strip()
     if not token:
+        print("[AUTH] Empty token after stripping Bearer prefix")
         return None
 
     try:
@@ -60,9 +62,11 @@ def get_requester_from_auth():
         role = payload.get('role')
         school_id = payload.get('school_id')
         if not user_id or not role:
+            print(f"[AUTH] Token decoded but missing id or role: {payload}")
             return None
         return {'id': user_id, 'role': role, 'school_id': school_id}
-    except Exception:
+    except Exception as e:
+        print(f"[AUTH] JWT decode error: {e}")
         return None
 
 
@@ -195,11 +199,13 @@ def create_teacher():
 
 @teachers_bp.route('/teachers', methods=['GET'])
 def list_teachers():
-    """List TEACHER and ASSISTANT users for a school. SCHOOL_ADMIN or SECRETARY (read)"""
+    """List TEACHER and ASSISTANT users for a school."""
     try:
         requester = get_requester_from_auth()
-        # allow SCHOOL_ADMIN and SECRETARY to read; also allow unauthenticated reads for dev/testing
-        if requester is not None and requester.get('role') not in ('SCHOOL_ADMIN', 'SECRETARY'):
+        # Allow SCHOOL_ADMIN, SECRETARY, TEACHER, SUPER_ADMIN to read; also allow unauthenticated reads
+        allowed_roles = ('SCHOOL_ADMIN', 'SECRETARY', 'TEACHER', 'SUPER_ADMIN', 'ASSISTANT')
+        if requester is not None and requester.get('role') not in allowed_roles:
+            print(f"[TEACHERS] Unauthorized role: {requester.get('role')}")
             return jsonify({'error': 'Unauthorized'}), 403
 
         school_id = request.args.get('school_id')
@@ -369,10 +375,12 @@ def list_teacher_courses(teacher_id):
 
 @teachers_bp.route('/schools/<int:school_id>/teacher-courses', methods=['GET'])
 def list_school_teacher_courses(school_id):
-    """List all courses for all teachers in a school. Allow SCHOOL_ADMIN, SECRETARY or unauthenticated reads."""
+    """List all courses for all teachers in a school."""
     try:
         requester = get_requester_from_auth()
-        if requester is not None and requester.get('role') not in ('SCHOOL_ADMIN', 'SECRETARY'):
+        allowed_roles = ('SCHOOL_ADMIN', 'SECRETARY', 'TEACHER', 'SUPER_ADMIN', 'ASSISTANT')
+        if requester is not None and requester.get('role') not in allowed_roles:
+            print(f"[TEACHER-COURSES] Unauthorized role: {requester.get('role')}")
             return jsonify({'error': 'Unauthorized'}), 403
 
         ensure_courses_table()

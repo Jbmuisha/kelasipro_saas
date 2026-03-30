@@ -80,10 +80,8 @@ export default function ParentLayout({
 
   const menu = [
     { name: t.dashboard, href: "/dashboard/parent", icon: <FaTachometerAlt /> },
-    { name: t.courses, href: "/dashboard/parent/courses", icon: <FaBook /> },
+    { name: language === "fr" ? "Bulletins" : "Report Cards", href: "/dashboard/parent/bulletins", icon: <FaChartBar /> },
     { name: t.profile, href: "/dashboard/parent/profile", icon: <FaUserGraduate /> },
-    { name: t.schedule, href: "/dashboard/parent/schedule", icon: <FaCalendarAlt /> },
-    { name: t.message, href: "/dashboard/parent/message", icon: <FaMessage /> },
     { name: t.settings, href: "/dashboard/parent/settings", icon: <FaCog /> },
   ];
 
@@ -123,7 +121,13 @@ export default function ParentLayout({
           ))}
         </ul>
 
-        <div className="logout">
+        <div className="logout" onClick={() => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          localStorage.removeItem('school_id');
+          localStorage.removeItem('school_type');
+          window.location.href = '/login';
+        }} style={{ cursor: 'pointer' }}>
           <FaSignOutAlt /> {sidebarOpen && t.logout}
         </div>
       </aside>
