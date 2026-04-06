@@ -79,7 +79,7 @@ export default function TeacherGradesPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<"enter" | "view" | "bulletin" | "summary" | "config">("enter");
+const [activeTab, setActiveTab] = useState<"enter" | "view" | "bulletin" | "summary" | "semester" | "config">("enter");
 
   // Grade entry state
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
@@ -111,6 +111,9 @@ export default function TeacherGradesPage() {
   // Config state
   const [configCoefficients, setConfigCoefficients] = useState<Record<number, { coefficient: number; max_score: number }>>({});
   const [savingConfig, setSavingConfig] = useState(false);
+
+  // Grade config for dynamic periods
+  const [gradeConfig, setGradeConfig] = useState({max_periods: 3, school_type: 'primaire'} as any);
 
   useEffect(() => {
     const userStr = localStorage.getItem("user");
@@ -183,6 +186,15 @@ export default function TeacherGradesPage() {
             cfgMap[cfg.course_id] = { coefficient: cfg.coefficient, max_score: cfg.max_score };
           }
           setConfigCoefficients(cfgMap);
+        }
+
+        // Get grade config for dynamic periods
+        const gradeRes = await fetch(`/api/grades/config?school_id=${currentUser.school_id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (gradeRes.ok) {
+          const gradeData = await gradeRes.json();
+          setGradeConfig(gradeData.config);
         }
       } catch (err: any) {
         setError(err.message);
@@ -500,11 +512,13 @@ export default function TeacherGradesPage() {
         </div>
       )}
 
+
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, marginBottom: 20, overflowX: "auto", borderBottom: "1px solid #e5e7eb" }}>
         <button style={tabStyle(activeTab === "enter")} onClick={() => setActiveTab("enter")}>📝 Saisir Notes</button>
         <button style={tabStyle(activeTab === "view")} onClick={() => setActiveTab("view")}>📋 Voir Notes</button>
         <button style={tabStyle(activeTab === "bulletin")} onClick={() => setActiveTab("bulletin")}>📊 Bulletin</button>
+        <button style={tabStyle(activeTab === "semester")} onClick={() => setActiveTab("semester")}>📋 Semestre</button>
         <button style={tabStyle(activeTab === "summary")} onClick={() => setActiveTab("summary")}>🏆 Classement</button>
         <button style={tabStyle(activeTab === "config")} onClick={() => setActiveTab("config")}>⚙️ Configuration</button>
       </div>
@@ -516,12 +530,13 @@ export default function TeacherGradesPage() {
             <h3 style={{ margin: "0 0 16px", fontSize: 16, color: "#111827" }}>Saisie des notes</h3>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginBottom: 16 }}>
+
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Période *</label>
                 <select style={selectStyle} value={selectedPeriod} onChange={(e) => setSelectedPeriod(Number(e.target.value))}>
-                  <option value={1}>1ère Période (T1)</option>
-                  <option value={2}>2ème Période (T2)</option>
-                  <option value={3}>3ème Période (T3)</option>
+                  {Array.from({length: gradeConfig.max_periods || 3}, (_, p) => p + 1).map((p) => (
+                    <option key={p} value={p}>{`Période ${p}`}</option>
+                  ))}
                 </select>
               </div>
 
@@ -537,10 +552,10 @@ export default function TeacherGradesPage() {
 
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Type *</label>
-                <select style={selectStyle} value={gradeType} onChange={(e) => setGradeType(e.target.value as any)}>
+                <select style={selectStyle} value={gradeType} onChange={(e) => setGradeType(e.target.value as any)} disabled={gradeConfig.school_type === 'secondaire' && gradeType === 'examen' && selectedPeriod % 2 === 1}>
                   <option value="interro">Interrogation</option>
                   <option value="devoir">Devoir</option>
-                  <option value="examen">Examen</option>
+                  <option value="examen">Examen {gradeConfig.school_type === 'secondaire' && selectedPeriod % 2 === 1 ? '(P2/P4 only)' : ''}</option>
                 </select>
               </div>
 
@@ -641,9 +656,9 @@ export default function TeacherGradesPage() {
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Période</label>
                 <select style={{ ...selectStyle, width: 180 }} value={viewPeriod} onChange={(e) => setViewPeriod(Number(e.target.value))}>
-                  <option value={1}>1ère Période (T1)</option>
-                  <option value={2}>2ème Période (T2)</option>
-                  <option value={3}>3ème Période (T3)</option>
+                  {Array.from({length: gradeConfig.max_periods || 3}, (_, p) => p + 1).map((p) => (
+                    <option key={p} value={p}>{p === 1 ? "1ère Période" : p === 2 ? "2ème Période" : `${p}ème Période`}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -737,9 +752,9 @@ export default function TeacherGradesPage() {
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Période</label>
                 <select style={{ ...selectStyle, width: 180 }} value={bulletinPeriod ?? ""} onChange={(e) => setBulletinPeriod(e.target.value ? Number(e.target.value) : null)}>
-                  <option value={1}>1ère Période (T1)</option>
-                  <option value={2}>2ème Période (T2)</option>
-                  <option value={3}>3ème Période (T3)</option>
+                  {Array.from({length: gradeConfig.max_periods || 3}, (_, p) => p + 1).map((p) => (
+                    <option key={p} value={p}>{p === 1 ? "1ère Période" : p === 2 ? "2ème Période" : `${p}ème Période`}</option>
+                  ))}
                   <option value="">Annuel</option>
                 </select>
               </div>
@@ -932,9 +947,9 @@ export default function TeacherGradesPage() {
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Période</label>
                 <select style={{ ...selectStyle, width: 180 }} value={summaryPeriod} onChange={(e) => setSummaryPeriod(Number(e.target.value))}>
-                  <option value={1}>1ère Période (T1)</option>
-                  <option value={2}>2ème Période (T2)</option>
-                  <option value={3}>3ème Période (T3)</option>
+                  {Array.from({length: gradeConfig.max_periods || 3}, (_, p) => p + 1).map((p) => (
+                    <option key={p} value={p}>{p === 1 ? "1ère Période" : p === 2 ? "2ème Période" : `${p}ème Période`}</option>
+                  ))}
                 </select>
               </div>
               <button style={btnPrimary} onClick={fetchClassSummary} disabled={loadingSummary}>
