@@ -223,7 +223,7 @@ def list_teachers():
         users = User.get_all(include_super_admin=False, school_id=school_id, requester_id=requester_id, requester_role=requester_role)
         filtered = [u.to_dict() for u in users if u.role in ('TEACHER', 'ASSISTANT')]
 
-        # enrich with classes and courses for each teacher
+        
         teacher_ids = [u['id'] for u in filtered]
         if teacher_ids:
             format_ids = ','.join(['%s'] * len(teacher_ids))
