@@ -7,6 +7,7 @@ schools_bp = Blueprint('schools', __name__)
 
 
 def get_requester_from_auth():
+    """Include school_type from JWT."""
     auth_header = request.headers.get('Authorization')
     if not auth_header:
         return None
@@ -19,7 +20,8 @@ def get_requester_from_auth():
         return {
             'id': payload.get('id'),
             'role': payload.get('role'),
-            'school_id': payload.get('school_id')
+            'school_id': payload.get('school_id'),
+            'school_type': payload.get('school_type')
         }
     except Exception:
         return None

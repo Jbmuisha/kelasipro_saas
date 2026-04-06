@@ -24,7 +24,7 @@ grades_bp = Blueprint('grades', __name__)
 
 
 def get_requester():
-    """Extract requester info from JWT token."""
+    """Extract requester info from JWT token, including school_type."""
     auth_header = request.headers.get('Authorization')
     if not auth_header:
         return None
@@ -34,11 +34,13 @@ def get_requester():
     try:
         secret = os.getenv("JWT_SECRET", "supersecretkey")
         payload = jwt.decode(token, secret, algorithms=["HS256"])
-        return {
+        requester = {
             'id': payload.get('id'),
             'role': payload.get('role'),
             'school_id': payload.get('school_id'),
+            'school_type': payload.get('school_type'),
         }
+        return requester
     except Exception:
         return None
 
@@ -106,6 +108,10 @@ def ensure_grades_tables():
                 FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """)
+        cursor.execute("SHOW COLUMNS FROM grade_configs LIKE 'school_type'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE grade_configs ADD COLUMN school_type VARCHAR(20) DEFAULT '' AFTER max_periods")
+            conn.commit()
 
     conn.commit()
 
@@ -129,18 +135,23 @@ def get_grade_config():
         ensure_grades_tables()
         conn = get_connection()
         with conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM grade_configs WHERE school_id=%s", (school_id,))
+            cursor.execute("SELECT gc.*, s.school_type FROM grade_configs gc LEFT JOIN schools s ON s.id = gc.school_id WHERE gc.school_id=%s", (school_id,))
             config = cursor.fetchone()
 
             if not config:
-                # Return defaults
+                # Fetch school_type and set defaults
+                cursor.execute("SELECT school_type FROM schools WHERE id=%s", (school_id,))
+                school_row = cursor.fetchone()
+                school_type = school_row['school_type'] if school_row else 'primaire'
+                max_p = 4 if school_type and school_type.lower() in ('secondaire', 'secondary') else 3
                 config = {
                     'school_id': int(school_id),
+                    'school_type': school_type,
                     'pass_percentage': 50.00,
                     'interro_weight': 50.00,
                     'devoir_weight': 50.00,
                     'examen_weight': 0.00,
-                    'max_periods': 3,
+                    'max_periods': max_p,
                 }
 
         # Convert Decimal to float for JSON
@@ -353,6 +364,16 @@ def create_grade():
         if float(score) < 0 or float(score) > float(max_score):
             return jsonify({'error': f'Score must be between 0 and {max_score}'}), 400
 
+        # Exam validation for secondary
+        conn_check = get_connection()
+        with conn_check.cursor() as cursor_check:
+            cursor_check.execute("SELECT school_type FROM schools s JOIN classes c ON c.school_id = s.id WHERE c.id = %s", (class_id,))
+            school = cursor_check.fetchone()
+            if school and school['school_type'] and school['school_type'].lower() in ('secondaire', 'secondary') and grade_type == 'examen' and period not in (2,4):
+                conn_check.close()
+                return jsonify({'error': 'Examen seulement autorisé pour les périodes 2 et 4 en secondaire.'}), 400
+        conn_check.close()
+
         ensure_grades_tables()
         conn = get_connection()
         with conn.cursor() as cursor:
@@ -420,6 +441,16 @@ def create_grades_bulk():
 
         if not grades_list:
             return jsonify({'error': 'grades array is required'}), 400
+
+        # Exam validation for secondary
+        conn_check = get_connection()
+        with conn_check.cursor() as cursor_check:
+            cursor_check.execute("SELECT school_type FROM schools s JOIN classes c ON c.school_id = s.id WHERE c.id = %s", (class_id,))
+            school = cursor_check.fetchone()
+            if school and school['school_type'] and school['school_type'].lower() in ('secondaire', 'secondary') and grade_type == 'examen' and period not in (2,4):
+                conn_check.close()
+                return jsonify({'error': 'Examen seulement autorisé pour les périodes 2 et 4 en secondaire.'}), 400
+        conn_check.close()
 
         ensure_grades_tables()
         conn = get_connection()

@@ -101,9 +101,14 @@ def get_classes():
     level = request.args.get("level")
     if not school_id:
         return jsonify({"error": "school_id is required"}), 400
+
+    # Get requester for school_type validation\n    requester = None  # Public reads allowed, no auth needed
+
     try:
         _ensure_level_column()
         classes = ClassModel.get_by_school(school_id, level=level)
+
+        # Optional validation skipped for public reads (requester=None)
 
         # DB debug: helps detect when Flask is connected to a different DB than phpMyAdmin.
         from db import get_connection
@@ -127,6 +132,7 @@ def get_classes():
             "debug": {
                 "school_id": school_id,
                 "level": level,
+            "requester_type": None,
                 "count": len(classes),
                 "db": db_name,
                 "db_host": db_host,

@@ -11,6 +11,7 @@ from routes.schedules import schedules_bp
 from routes.grades import grades_bp
 from utils.create_super_admin import create_super_admin
 from routes.uploads import uploads_bp
+# from routes.socketio import socketio
 
 app = Flask(__name__)
 
@@ -41,6 +42,11 @@ def ensure_school_type_column():
             cursor.execute("SHOW COLUMNS FROM users LIKE 'admin_level'")
             if not cursor.fetchone():
                 cursor.execute("ALTER TABLE users ADD COLUMN admin_level VARCHAR(50) NULL")
+                conn.commit()
+
+            cursor.execute("SHOW COLUMNS FROM users LIKE 'school_type'")
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN school_type VARCHAR(20) NULL")
                 conn.commit()
     except Exception:
        
@@ -91,6 +97,10 @@ app.register_blueprint(messages_bp, url_prefix="/api")
 app.register_blueprint(uploads_bp, url_prefix="/api")
 app.register_blueprint(schedules_bp, url_prefix="/api")
 app.register_blueprint(grades_bp, url_prefix="/api")
+
+# ------------------- Socket.IO -------------------
+# socketio.init_app(app, cors_allowed_origins="*", manage_session=False)
+
 
 # ------------------- Test Route -------------------
 @app.route('/test')

@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { setImpersonation } from '@/utils/auth';
 import '@/app/dashboard/school/school.css';
 
 type TeacherListItem = {
@@ -236,10 +237,31 @@ export default function SchoolTeachersPage() {
                       ? t.courses.map(c => c.name).join(', ')
                       : <span style={{ color: '#999', fontStyle: 'italic' }}>None</span>}
                   </td>
-                  <td style={{ padding: '8px 12px' }}>
-                    {t.role === 'TEACHER' && (
+                <td style={{ padding: '8px 12px' }}>
+                    {t.role === 'TEACHER' ? (
                       <div>
-                        <div style={{ maxHeight: 120, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 6, padding: 6, marginBottom: 6 }}>
+                        <button
+                          onClick={() => {
+                            setImpersonation({ ...t, role: t.role || 'TEACHER' });
+                            window.location.href = '/dashboard/teacher';
+                          }}
+                          style={{
+                            background: '#3b82f6',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: 6,
+                            padding: '6px 12px',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            marginBottom: 8,
+                            width: '100%',
+                          }}
+                          title="Login as this teacher"
+                        >
+                          👑 Login As
+                        </button>
+                        <div style={{ maxHeight: 120, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 6, padding: 6 }}>
                           {schoolCourses.length === 0 ? (
                             <span style={{ fontSize: 12, color: '#999' }}>No courses yet</span>
                           ) : (
@@ -269,12 +291,14 @@ export default function SchoolTeachersPage() {
                             type="button"
                             onClick={() => assignCourses(t.id)}
                             disabled={!!assigningByTeacher[t.id]}
-                            style={{ fontSize: 12, padding: '4px 10px' }}
+                            style={{ fontSize: 12, padding: '4px 10px', marginTop: 4, width: '100%' }}
                           >
                             {assigningByTeacher[t.id] ? 'Assigning...' : `Assign ${(assignCoursesByTeacher[t.id] || []).length} course(s)`}
                           </button>
                         )}
                       </div>
+                    ) : (
+                      <span style={{ fontSize: 12, color: '#999' }}>Assistant</span>
                     )}
                   </td>
                 </tr>

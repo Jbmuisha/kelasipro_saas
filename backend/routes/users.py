@@ -35,6 +35,13 @@ def create_user():
     data = request.json
     try:
         requester_id = data.get("requester_id")
+        # Get school_type from school_id
+        school_type = None
+        if data.get("school_id"):
+            school = School.get_by_id(data["school_id"])
+            if school:
+                school_type = school.school_type
+
         user = User.create(
             name=data.get("name"),
             email=data.get("email"),
@@ -43,7 +50,8 @@ def create_user():
             school_id=data.get("school_id"),
             class_id=data.get("class_id"),
             created_by=requester_id,
-            admin_level=data.get("admin_level")
+            admin_level=school_type,  # Use school_type
+            school_type=school_type  # New field
         )
         
         update_args = {}
@@ -65,11 +73,64 @@ def create_user():
 # ================= UPDATE USER =================
 @users_bp.route("/<int:user_id>", methods=["PUT"])
 def update_user(user_id):
+    from routes.auth import get_requester_from_auth  # Reuse from auth
+    requester = get_requester_from_auth()
+    if not requester:
+        return jsonify({"error": "Unauthorized - invalid/missing token"}), 401
+    if requester['role'] not in ('SCHOOL_ADMIN', 'SUPER_ADMIN'):
+        return jsonify({"error": "Unauthorized - insufficient permissions"}), 403
+
     data = request.json
     try:
         user = User.get_by_id(user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
+
+        # SCHOOL_ADMIN can't demote other admins or change their school
+        if requester['role'] == 'SCHOOL_ADMIN' and user.role in ('SCHOOL_ADMIN', 'SUPER_ADMIN') and requester['id'] != user.id:
+            if data.get('role') or data.get('school_id') or data.get('admin_level'):
+                return jsonify({"error": "School admin cannot modify other admin accounts"}), 403
+
+        # Log the change
+        old_role = user.role
+        print(f"[USER UPDATE] {requester['id']} ({requester['role']}) updating user {user_id} (old_role: {old_role})")
+
+        # Sync school_type if school_id changed
+        school_type = None
+        if data.get("school_id"):
+            school = School.get_by_id(data["school_id"])
+            if school:
+                school_type = school.school_type
+
+        # Avoid sending huge base64 images to MySQL (can trigger max_allowed_packet / broken pipe).
+        # Only update profile_image if explicitly provided and reasonably sized.
+        profile_image = data.get("profile_image")
+        if isinstance(profile_image, str) and len(profile_image) > 500_000:
+            return jsonify({"error": "Profile image is too large. Please upload a smaller image."}), 400
+
+        update_args = {
+            "name": data.get("name"),
+            "email": data.get("email"),
+            "role": data.get("role"),
+            "password": data.get("password"),
+            "school_id": data.get("school_id"),
+            "profile_image": profile_image,
+            "admin_level": school_type,
+            "school_type": school_type
+        }
+        
+        if "class_id" in data:
+            update_args["class_id"] = data["class_id"]
+        if user.role == "PARENT" and "children_ids" in data:
+            update_args["children_ids"] = data["children_ids"]
+
+        user.update(**update_args)
+        updated = User.get_by_id(user_id)
+        print(f"[DEBUG] Updated user {user_id}: role {old_role} -> {updated.role}")
+        return jsonify(updated.to_dict())
+    except Exception as e:
+        print(f"[ERROR] update_user: {str(e)}")
+        return jsonify({"error": str(e)}), 400
 
         # Avoid sending huge base64 images to MySQL (can trigger max_allowed_packet / broken pipe).
         # Only update profile_image if explicitly provided and reasonably sized.

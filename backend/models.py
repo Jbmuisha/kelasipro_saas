@@ -5,7 +5,7 @@ from datetime import datetime
 
 class User:
     def __init__(self, id, name, email, role, created_at=None,
-                 school_id=None, status=None, profile_image=None, class_id=None, unique_id=None, created_by=None, admin_level=None):
+                 school_id=None, school_type=None, status=None, profile_image=None, class_id=None, unique_id=None, created_by=None, admin_level=None):
         self.id = id
         self.name = name
         self.email = email
@@ -31,6 +31,7 @@ class User:
             role=data['role'],
             created_at=data.get('created_at'),
             school_id=data.get('school_id'),
+            school_type=data.get('school_type'),
             status=data.get('status'),
             profile_image=data.get('profile_image'),
             class_id=data.get('class_id'),
@@ -64,7 +65,8 @@ class User:
             'children': self.children,
             'parents': self.parents,
             'created_by': self.created_by if hasattr(self, 'created_by') else None,
-            'admin_level': self.admin_level if hasattr(self, 'admin_level') else None
+            'admin_level': self.admin_level if hasattr(self, 'admin_level') else None,
+            'school_type': self.school_type if hasattr(self, 'school_type') else None
         }
 
     @classmethod
@@ -270,7 +272,7 @@ class User:
 
             return cls.get_by_id(new_user_id)
 
-    def update(self, name=None, email=None, role=None, school_id=None, password=None, profile_image=None, class_id=None, children_ids=None, admin_level=None):
+    def update(self, name=None, email=None, role=None, school_id=None, school_type=None, password=None, profile_image=None, class_id=None, children_ids=None, admin_level=None):
         """Update an existing user"""
         conn = get_connection()
         with conn.cursor() as cursor:

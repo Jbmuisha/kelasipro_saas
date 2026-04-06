@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import "../../styles/login.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,9 +72,12 @@ export default function LoginPage() {
           localStorage.setItem("school_type", data.user.admin_level);
         }
 
+        // CRITICAL: Set cookie for middleware
+        document.cookie = `token=${data.token}; path=/; SameSite=Strict; Secure=false`;
+
         console.log(`[LOGIN SUCCESS] User: ${identifier}, Role: ${data.user.role}`);
 
-        // Redirect based on role
+        // Respect middleware returnTo or fallback to role route
         const role = data.user.role;
         const routes: Record<string, string> = {
           SUPER_ADMIN: "/dashboard/admin",
@@ -85,8 +89,8 @@ export default function LoginPage() {
           ASSISTANT: "/dashboard/assistant",
         };
 
-        const destination = routes[role] || "/";
-        router.push(destination);
+        const returnTo = searchParams.get('returnTo') || routes[role] || '/';
+        router.push(decodeURIComponent(returnTo));
       }
     } catch (err) {
       console.error("[LOGIN ERROR]", err);

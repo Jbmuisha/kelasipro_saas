@@ -84,17 +84,30 @@ def login():
         return jsonify({"message": "Erreur de vérification du mot de passe."}), 500
 
     # Generate JWT token
+    # For TEACHER role, ALWAYS use school.school_type (not user.admin_level)
+    school_type = user.get('admin_level') or user.get('school_type')
+    if role == "TEACHER" and user.get("school_id"):
+        with get_connection().cursor() as cursor:
+            cursor.execute("SELECT school_type FROM schools WHERE id = %s", (user["school_id"],))
+            school_row = cursor.fetchone()
+            if school_row:
+                school_type = school_row['school_type'] or None
+
+    if not school_type and role != "SUPER_ADMIN":
+        school_type = 'primaire'
+
     token = jwt.encode(
         {
             "id": user["id"],
             "role": user["role"],
             "school_id": user.get("school_id"),
+            "school_type": school_type,
         },
         SECRET,
         algorithm="HS256"
     )
 
-    print("[LOGIN SUCCESS] User logged in: {} (role: {})".format(email_or_id, role))
+    print("[LOGIN SUCCESS] User logged in: {} (role: {}, school_type: {})".format(email_or_id, role, school_type))
 
     # Fetch children for PARENT users
     safe_user = serialize_user(user)
@@ -136,3 +149,36 @@ def login():
         "token": token,
         "user": safe_user
     })
+
+
+def get_requester_from_auth():
+    """Extract requester info from JWT Authorization header."""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        return None
+    token = auth_header.replace('Bearer ', '').strip()
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+        return {
+            'id': payload.get('id'),
+            'role': payload.get('role'),
+            'school_id': payload.get('school_id'),
+            'school_type': payload.get('school_type')
+        }
+    except Exception:
+        return None
+
+
+@auth_bp.route("/logout", methods=["POST"])
+def logout():
+    """Client-triggered logout. For stateless JWT, just clear client storage.
+    Future: blacklist token if needed.
+    """
+    requester = get_requester_from_auth()
+    if not requester:
+        return jsonify({"error": "Invalid token"}), 401
+    
+    print(f"[LOGOUT] User {requester['id']} ({requester['role']}) logged out")
+    return jsonify({"message": "Logout successful"}), 200

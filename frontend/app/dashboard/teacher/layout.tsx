@@ -18,7 +18,9 @@ import {
   FaTimes,
   FaEnvelope,
 } from "react-icons/fa";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { io, Socket } from 'socket.io-client';
+import { useEffectiveUser, clearImpersonation, logout } from "@/utils/auth";
 import "@/app/dashboard/teacher/teacher.css";
 
 const translations = {
@@ -54,7 +56,7 @@ const translations = {
   },
 };
 
-function useTranslation(language: "fr" | "en") {
+function useTranslation(language: 'fr' | 'en') {
   return translations[language];
 }
 
@@ -64,8 +66,8 @@ function useIsMobile(breakpoint = 768) {
     const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
     const handler = () => setIsMobile(mq.matches);
     handler();
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
   }, [breakpoint]);
   return isMobile;
 }
@@ -74,30 +76,35 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [language, setLanguage] = useState<"fr" | "en">("fr");
-  const [teacherName, setTeacherName] = useState("Enseignant");
+  const [language, setLanguage] = useState<'fr' | 'en'>('fr');
+  const [effectiveUser, effectiveLoading] = useEffectiveUser();
+  const [teacherName, setTeacherName] = useState('Enseignant');
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const socketRef = useRef<Socket | null>(null);
 
   const t = useTranslation(language);
   const isMobile = useIsMobile();
 
+  // Role guard
   useEffect(() => {
-    try {
-      const userStr = localStorage.getItem("user");
-      if (userStr) {
-        const u = JSON.parse(userStr);
-        if (u.name) setTeacherName(u.name);
-      }
-    } catch {}
-  }, []);
+    if (effectiveLoading || !effectiveUser) return;
+    if (effectiveUser.role !== 'TEACHER') {
+      router.replace('/dashboard/school');
+    }
+  }, [effectiveUser, effectiveLoading, router]);
 
-  // Fetch unread message count
   useEffect(() => {
+    if (effectiveLoading || !effectiveUser) return;
+    setTeacherName(effectiveUser.name);
+  }, [effectiveUser, effectiveLoading]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || !effectiveUser) return;
+
     const fetchUnread = async () => {
       try {
-        const token = localStorage.getItem("token");
-        if (!token) return;
-        const res = await fetch("/api/messages/unread-count", {
+        const res = await fetch('/api/messages/unread-count', {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
@@ -107,35 +114,58 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
       } catch {}
     };
     fetchUnread();
-    const interval = setInterval(fetchUnread, 15000);
-    return () => clearInterval(interval);
-  }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    localStorage.removeItem("school_id");
-    localStorage.removeItem("school_type");
-    window.location.href = "/login";
+    socketRef.current = io('http://localhost:5000', {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+    });
+
+    socketRef.current.on('connect', () => {
+      console.log('Socket connected');
+      socketRef.current?.emit('join_school');
+    });
+
+    socketRef.current.on('unread_update', (data) => {
+      if (data.user_id === effectiveUser.id) {
+        setUnreadMessages((prev) => Math.max(0, prev + data.delta));
+      }
+    });
+
+    socketRef.current.on('connect_error', (err) => {
+      console.warn('Socket error:', err);
+    });
+
+    return () => {
+      socketRef.current?.disconnect();
+    };
+  }, [effectiveUser]);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (err) {
+      console.warn('[LOGOUT] Error:', err);
+    }
+    window.location.href = '/login';
   };
 
   const menu = [
-    { name: t.dashboard, href: "/dashboard/teacher", icon: <FaTachometerAlt /> },
-    { name: t.classes, href: "/dashboard/teacher/classes", icon: <FaChalkboardTeacher /> },
-    { name: t.students, href: "/dashboard/teacher/students", icon: <FaUserGraduate /> },
-    { name: t.grades, href: "/dashboard/teacher/grades", icon: <FaPencilAlt /> },
-    { name: t.attendance, href: "/dashboard/teacher/attendance", icon: <FaCalendarAlt /> },
+    { name: t.dashboard, href: '/dashboard/teacher', icon: <FaTachometerAlt /> },
+    { name: t.classes, href: '/dashboard/teacher/classes', icon: <FaChalkboardTeacher /> },
+    { name: t.students, href: '/dashboard/teacher/students', icon: <FaUserGraduate /> },
+    { name: t.grades, href: '/dashboard/teacher/grades', icon: <FaPencilAlt /> },
+    { name: t.attendance, href: '/dashboard/teacher/attendance', icon: <FaCalendarAlt /> },
     {
       name: t.messages,
-      href: "/dashboard/teacher/messages",
+      href: '/dashboard/teacher/messages',
       icon: <FaEnvelope />,
       badge: unreadMessages > 0 ? unreadMessages : undefined,
     },
-    { name: "Mon Profil", href: "/dashboard/teacher/profile", icon: <FaCog /> },
+    { name: 'Mon Profil', href: '/dashboard/teacher/profile', icon: <FaCog /> },
   ];
 
   return (
-    <div className={`teacher-layout ${sidebarOpen ? "" : "sidebar-closed"}`}>
+    <div className={`teacher-layout ${sidebarOpen ? '' : 'sidebar-closed'}`}>
       <button className="sidebar-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
         {sidebarOpen ? <FaTimes /> : <FaBars />}
       </button>
@@ -153,25 +183,25 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
         <ul className="teacher-menu">
           {menu.map((item) => (
-            <li key={item.href} className={pathname === item.href ? "active" : ""}>
+            <li key={item.href} className={pathname === item.href ? 'active' : ''}>
               <Link href={item.href} className="menu-link">
                 <span className="icon">{item.icon}</span>
                 {sidebarOpen && (
                   <span className="label">
                     {item.name}
-                    {(item as any).badge && (
+                    {item.badge && (
                       <span
                         style={{
-                          background: "#ef4444",
-                          color: "#fff",
+                          background: '#ef4444',
+                          color: '#fff',
                           borderRadius: 10,
-                          padding: "1px 7px",
+                          padding: '1px 7px',
                           fontSize: 11,
                           fontWeight: 700,
                           marginLeft: 8,
                         }}
                       >
-                        {(item as any).badge}
+                        {item.badge}
                       </span>
                     )}
                   </span>
@@ -181,7 +211,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
           ))}
         </ul>
 
-        <div className="logout" onClick={handleLogout} style={{ cursor: "pointer" }}>
+        <div className="logout" onClick={handleLogout} style={{ cursor: 'pointer' }}>
           <FaSignOutAlt /> {sidebarOpen && t.logout}
         </div>
       </aside>
@@ -199,12 +229,12 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
           <div className="topbar-right">
             <div className="language-selector">
-              <button onClick={() => setLanguage(language === "fr" ? "en" : "fr")} className="language-btn">
-                {language === "fr" ? "EN" : "FR"}
+              <button onClick={() => setLanguage(language === 'fr' ? 'en' : 'fr')} className="language-btn">
+                {language === 'fr' ? 'EN' : 'FR'}
               </button>
             </div>
 
-            <Link href="/dashboard/teacher/messages" className="notification-icon" style={{ position: "relative", textDecoration: "none", color: "inherit" }}>
+            <Link href="/dashboard/teacher/messages" className="notification-icon" style={{ position: 'relative', textDecoration: 'none', color: 'inherit' }}>
               <FaBell />
               {unreadMessages > 0 && <span className="notification-badge">{unreadMessages}</span>}
             </Link>
@@ -213,7 +243,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
               <img src="https://i.pravatar.cc/40" alt="profile" className="avatar" />
               <div className="profile-info">
                 <strong>{teacherName}</strong>
-                <p>{t.teacher}</p>
+                <p>{effectiveUser?.role === 'TEACHER' ? t.teacher : 'Assistant'}</p>
               </div>
             </div>
           </div>

@@ -204,7 +204,13 @@ def get_conversation(other_user_id):
                 "UPDATE messages SET is_read=1 WHERE sender_id=%s AND receiver_id=%s AND is_read=0",
                 (other_user_id, my_id)
             )
+            updated_count = cursor.rowcount  # Number of messages marked read
             conn.commit()
+            
+            # Socket emit read update (disabled due to import error)
+            school_id = requester.get('school_id')
+            # from routes.socketio import broadcast_unread_update
+            # broadcast_unread_update(my_id, school_id, -updated_count)
 
             for m in messages:
                 if m.get('created_at'):
@@ -266,6 +272,16 @@ def send_message():
             if msg and msg.get('created_at'):
                 msg['created_at'] = msg['created_at'].isoformat()
 
+        # Socket.IO emit new unread +1 for receiver (disabled)
+        school_id = requester.get('school_id')
+        # from routes.socketio import broadcast_unread_update
+        # broadcast_unread_update(int(receiver_id), school_id, 1)
+
+        # Emit live message (disabled)
+        # emit_data = {'message': msg, 'school_id': school_id}
+        # from flask_socketio import emit
+        # emit('send_message', emit_data, room=f'school_{school_id or 0}', namespace='/')
+        
         return jsonify({'message': msg}), 201
     except Exception as e:
         traceback.print_exc()

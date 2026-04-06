@@ -1,34 +1,37 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useEffectiveUser } from "@/utils/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export default function TeacherDashboard() {
-  const [user, setUser] = useState<any>(null);
+  const [effectiveUser, effectiveLoading] = useEffectiveUser();
   const [className, setClassName] = useState("");
   const [studentCount, setStudentCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const userStr = localStorage.getItem("user");
-    if (userStr) setUser(JSON.parse(userStr));
-  }, []);
+    if (effectiveLoading) return;
+  }, [effectiveLoading]);
 
   useEffect(() => {
-    if (!user?.id || !user?.school_id) { setLoading(false); return; }
+    if (!effectiveUser?.id || !effectiveUser?.school_id) { 
+      setLoading(false); 
+      return; 
+    }
     const fetchData = async () => {
       try {
         const token = localStorage.getItem("token");
-        const classRes = await fetch(`${API_URL}/api/classes/?school_id=${user.school_id}`, {
+        const classRes = await fetch(`${API_URL}/api/classes/?school_id=${effectiveUser.school_id}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (classRes.ok) {
           const cd = await classRes.json();
-          const cls = (cd.classes || []).find((c: any) => c.main_teacher_id === user.id);
+          const cls = (cd.classes || []).find((c: any) => c.main_teacher_id === effectiveUser.id);
           if (cls) {
             setClassName(cls.name);
-            const usersRes = await fetch(`${API_URL}/api/users/?school_id=${user.school_id}`, {
+            const usersRes = await fetch(`${API_URL}/api/users/?school_id=${effectiveUser.school_id}`, {
               headers: { Authorization: `Bearer ${token}` },
             });
             if (usersRes.ok) {
@@ -41,7 +44,11 @@ export default function TeacherDashboard() {
       finally { setLoading(false); }
     };
     fetchData();
-  }, [user]);
+  }, [effectiveUser]);
+
+  if (effectiveLoading || loading) {
+    return <div style={{ padding: 20 }}>Loading...</div>;
+  }
 
   return (
     <div style={{ maxWidth: 800, margin: "0 auto", padding: 20 }}>
@@ -52,7 +59,7 @@ export default function TeacherDashboard() {
         boxShadow: "0 12px 40px rgba(16,185,129,0.2)",
       }}>
         <h1 style={{ margin: "0 0 4px", fontSize: 24, fontWeight: 800 }}>
-          👋 Bienvenue, {user?.name || "Enseignant"}
+          👋 Bienvenue, {effectiveUser?.name || "Enseignant"}
         </h1>
         <p style={{ margin: 0, opacity: 0.85, fontSize: 14 }}>Tableau de bord enseignant</p>
         {className && (

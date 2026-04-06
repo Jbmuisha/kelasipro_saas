@@ -40,7 +40,7 @@ def ensure_courses_table():
 
 
 def get_requester_from_auth():
-    """Return requester info from Authorization: Bearer <jwt>.
+    """Return requester info from Authorization: Bearer <jwt>, including school_type.
 
     Uses the same JWT secret as /api/auth/login.
     """
@@ -61,10 +61,11 @@ def get_requester_from_auth():
         user_id = payload.get('id')
         role = payload.get('role')
         school_id = payload.get('school_id')
+        school_type = payload.get('school_type')
         if not user_id or not role:
             print(f"[AUTH] Token decoded but missing id or role: {payload}")
             return None
-        return {'id': user_id, 'role': role, 'school_id': school_id}
+        return {'id': user_id, 'role': role, 'school_id': school_id, 'school_type': school_type}
     except Exception as e:
         print(f"[AUTH] JWT decode error: {e}")
         return None
@@ -375,7 +376,7 @@ def list_teacher_courses(teacher_id):
 
 @teachers_bp.route('/schools/<int:school_id>/teacher-courses', methods=['GET'])
 def list_school_teacher_courses(school_id):
-    """List all courses for all teachers in a school."""
+    """List all courses for all teachers in a school, filtered by school_type."""
     try:
         requester = get_requester_from_auth()
         allowed_roles = ('SCHOOL_ADMIN', 'SECRETARY', 'TEACHER', 'SUPER_ADMIN', 'ASSISTANT')
@@ -383,15 +384,39 @@ def list_school_teacher_courses(school_id):
             print(f"[TEACHER-COURSES] Unauthorized role: {requester.get('role')}")
             return jsonify({'error': 'Unauthorized'}), 403
 
+        # Get school_type
+        school_type = requester.get('school_type') if requester else None
+        if not school_type:
+            conn_school = get_connection()
+            with conn_school.cursor() as cursor:
+                cursor.execute("SELECT school_type FROM schools WHERE id=%s", (school_id,))
+                row = cursor.fetchone()
+                school_type = row['school_type'] if row else 'primaire'
+
         ensure_courses_table()
         conn = get_connection()
         with conn.cursor() as cursor:
-            cursor.execute("SELECT c.id, c.teacher_id, c.school_id, c.name, c.description, c.created_at, u.name as teacher_name FROM courses c LEFT JOIN users u ON u.id=c.teacher_id WHERE c.school_id=%s ORDER BY c.created_at DESC", (school_id,))
+            # Filter classes by school_type in JOIN
+            cursor.execute("""
+                SELECT c.id, c.teacher_id, c.school_id, c.name, c.description, c.created_at, u.name as teacher_name 
+                FROM courses c 
+                LEFT JOIN users u ON u.id=c.teacher_id 
+                WHERE c.school_id=%s 
+                AND NOT EXISTS (
+                    SELECT 1 FROM course_classes cc JOIN classes cl ON cl.id=cc.class_id 
+                    WHERE cc.course_id = c.id AND cl.level != %s
+                )
+                ORDER BY c.created_at DESC
+            """, (school_id, school_type))
             rows = cursor.fetchall()
             for r in rows:
-                cursor.execute("SELECT cc.class_id, c.name FROM course_classes cc JOIN classes c ON c.id=cc.class_id WHERE cc.course_id=%s", (r['id'],))
+                cursor.execute("""
+                    SELECT cc.class_id, cl.name FROM course_classes cc 
+                    JOIN classes cl ON cl.id=cc.class_id 
+                    WHERE cc.course_id=%s AND cl.level = %s
+                """, (r['id'], school_type))
                 r['classes'] = cursor.fetchall()
-        return jsonify({'courses': rows}), 200
+        return jsonify({'courses': rows, 'filtered_by_type': school_type}), 200
     except Exception as e:
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
