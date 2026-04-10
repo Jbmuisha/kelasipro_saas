@@ -53,7 +53,6 @@ export default function SchoolTeachersPage() {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.status === 401 || res.status === 403) {
-        // Token expired or invalid — force re-login
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('school_id');
@@ -187,98 +186,107 @@ export default function SchoolTeachersPage() {
 
       <form onSubmit={createUser} style={{ marginBottom: 20 }}>
         <h3>Add teacher / assistant</h3>
-        <label>Role</label>
-        <select value={role} onChange={e => setRole(e.target.value as any)}>
+        <label>Role:</label>
+        <select value={role} onChange={e => setRole(e.target.value as 'TEACHER' | 'ASSISTANT')}>
           <option value="TEACHER">Teacher</option>
           <option value="ASSISTANT">Assistant</option>
         </select>
 
-        <input placeholder="Name" value={name} onChange={e => setName(e.target.value)} required />
-        <input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+        <input placeholder="Name *" value={name} onChange={e => setName(e.target.value)} required />
+        <input placeholder="Email (optional)" value={email} onChange={e => setEmail(e.target.value)} type="email" />
 
         <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
           <button type="submit" disabled={creating}>
             {creating ? 'Creating...' : role === 'TEACHER' ? 'Create Teacher' : 'Create Assistant'}
           </button>
-          <Link href="/dashboard/school/classes"><button type="button">Go to Classes</button></Link>
-          <Link href="/dashboard/school/courses"><button type="button">Manage Courses</button></Link>
+          <Link href="/dashboard/school/classes"><button type="button">← Classes</button></Link>
+          <Link href="/dashboard/school/courses"><button type="button">Courses →</button></Link>
         </div>
       </form>
 
-      <h3>Existing teachers & assistants</h3>
+      <h3>Current teachers & assistants ({teachers.length})</h3>
+      {!loading && teachers.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+          <p>No teachers or assistants yet. Create one above!</p>
+        </div>
+      )}
       {!loading && teachers.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
-              <tr style={{ background: '#f7f7f7', textAlign: 'left' }}>
-                <th style={{ padding: '8px 12px', borderBottom: '2px solid #e2e8f0' }}>Name</th>
-                <th style={{ padding: '8px 12px', borderBottom: '2px solid #e2e8f0' }}>Email</th>
-                <th style={{ padding: '8px 12px', borderBottom: '2px solid #e2e8f0' }}>Role</th>
-                <th style={{ padding: '8px 12px', borderBottom: '2px solid #e2e8f0' }}>Classes</th>
-                <th style={{ padding: '8px 12px', borderBottom: '2px solid #e2e8f0' }}>Courses</th>
-                <th style={{ padding: '8px 12px', borderBottom: '2px solid #e2e8f0' }}>Assign Course</th>
+              <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
+                <th style={{ padding: '12px 16px', borderBottom: '2px solid #e5e7eb' }}>Name</th>
+                <th style={{ padding: '12px 16px', borderRadius: '12px', borderBottom: '2px solid #e5e7eb' }}>Email</th>
+                <th style={{ padding: '12px 16px', borderBottom: '2px solid #e5e7eb' }}>Role</th>
+                <th style={{ padding: '12px 16px', borderBottom: '2px solid #e5e7eb' }}>Classes</th>
+                <th style={{ padding: '12px 16px', borderBottom: '2px solid #e5e7eb' }}>Courses</th>
+                <th style={{ padding: '12px 16px', borderBottom: '2px solid #e5e7eb' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {teachers.map((t) => (
-                <tr key={t.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                  <td style={{ padding: '8px 12px', fontWeight: 'bold' }}>{t.name}</td>
-                  <td style={{ padding: '8px 12px' }}>{t.email || '-'}</td>
-                  <td style={{ padding: '8px 12px' }}>
-                    <span style={{ fontSize: 12, color: '#666' }}>{t.role}</span>
+                <tr key={t.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                  <td style={{ padding: '12px 16px', fontWeight: 600 }}>{t.name}</td>
+                  <td style={{ padding: '12px 16px', fontSize: 14 }}>{t.email || <em>-</em>}</td>
+                  <td style={{ padding: '12px 16px' }}>
+                    <span style={{ 
+                      background: t.role === 'TEACHER' ? '#dbeafe' : '#f0f9ff',
+                      color: t.role === 'TEACHER' ? '#1e40af' : '#0e7490',
+                      padding: '4px 12px', 
+                      borderRadius: '20px', 
+                      fontSize: 13, 
+                      fontWeight: 600 
+                    }}>{t.role || 'TEACHER'}</span>
                   </td>
-                  <td style={{ padding: '8px 12px', fontSize: 12 }}>
-                    {t.classes && t.classes.length > 0
-                      ? t.classes.map(c => c.name).join(', ')
-                      : <span style={{ color: '#999' }}>None</span>}
+                  <td style={{ padding: '12px 16px', fontSize: 13 }}>
+                    {t.classes?.length ? t.classes.map(c => c.name).join(', ') : <em style={{ color: '#9ca3af' }}>None</em>}
                   </td>
-                  <td style={{ padding: '8px 12px', fontSize: 12 }}>
-                    {t.courses && t.courses.length > 0
-                      ? t.courses.map(c => c.name).join(', ')
-                      : <span style={{ color: '#999', fontStyle: 'italic' }}>None</span>}
+                  <td style={{ padding: '12px 16px', fontSize: 13 }}>
+                    {t.courses?.length ? t.courses.map(c => c.name).join(', ') : <em style={{ color: '#9ca3af' }}>None</em>}
                   </td>
-                <td style={{ padding: '8px 12px' }}>
+                  <td style={{ padding: '12px 16px' }}>
                     {t.role === 'TEACHER' ? (
-                      <div>
+                      <>
                         <button
-                          onClick={() => {
-                            setImpersonation({ ...t, role: t.role || 'TEACHER' });
-                            window.location.href = '/dashboard/teacher';
-                          }}
+                          onClick={async () => setImpersonation({ id: t.id, role: t.role })}
                           style={{
                             background: '#3b82f6',
                             color: 'white',
                             border: 'none',
-                            borderRadius: 6,
-                            padding: '6px 12px',
-                            fontSize: 12,
+                            borderRadius: 8,
+                            padding: '8px 16px',
+                            fontSize: 13,
                             fontWeight: 600,
                             cursor: 'pointer',
                             marginBottom: 8,
                             width: '100%',
+                            boxShadow: '0 2px 4px rgba(59,130,246,0.3)'
                           }}
-                          title="Login as this teacher"
+                          title="Login as this teacher (admin only)"
                         >
                           👑 Login As
                         </button>
-                        <div style={{ maxHeight: 120, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 6, padding: 6 }}>
+                        <div style={{ maxHeight: 120, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
                           {schoolCourses.length === 0 ? (
-                            <span style={{ fontSize: 12, color: '#999' }}>No courses yet</span>
+                            <span style={{ fontSize: 13, color: '#9ca3af' }}>No courses available</span>
                           ) : (
-                            schoolCourses.map(c => {
-                              const alreadyAssigned = t.courses?.some(tc => tc.id === c.id);
+                            schoolCourses.map((c) => {
+                              const alreadyAssigned = t.courses?.some((tc) => tc.id === c.id);
                               return (
-                                <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '2px 0', cursor: 'pointer' }}>
+                                <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '4px 0', cursor: 'pointer' }}>
                                   <input
                                     type="checkbox"
                                     checked={(assignCoursesByTeacher[t.id] || []).includes(c.id)}
                                     onChange={() => toggleCourseForTeacher(t.id, c.id)}
-                                    disabled={!!alreadyAssigned}
+                                    disabled={alreadyAssigned}
                                   />
-                                  <span style={{ color: alreadyAssigned ? '#999' : '#333' }}>
+                                  <span style={{ 
+                                    color: alreadyAssigned ? '#9ca3af' : '#374151',
+                                    fontWeight: alreadyAssigned ? 'normal' : '500' 
+                                  }}>
                                     {c.name}
-                                    {alreadyAssigned && ' ✓'}
-                                    {!alreadyAssigned && c.teacher_name && ` (${c.teacher_name})`}
+                                    {alreadyAssigned && ' ✓ Assigned'}
+                                    {!alreadyAssigned && c.teacher_name && ` (current: ${c.teacher_name})`}
                                     {!alreadyAssigned && !c.teacher_name && ' (unassigned)'}
                                   </span>
                                 </label>
@@ -290,15 +298,25 @@ export default function SchoolTeachersPage() {
                           <button
                             type="button"
                             onClick={() => assignCourses(t.id)}
-                            disabled={!!assigningByTeacher[t.id]}
-                            style={{ fontSize: 12, padding: '4px 10px', marginTop: 4, width: '100%' }}
+                            disabled={assigningByTeacher[t.id]}
+                            style={{ 
+                              fontSize: 13, 
+                              padding: '6px 12px', 
+                              marginTop: 8, 
+                              width: '100%',
+                              background: assigningByTeacher[t.id] ? '#9ca3af' : '#10b981',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: 6,
+                              cursor: assigningByTeacher[t.id] ? 'not-allowed' : 'pointer'
+                            }}
                           >
-                            {assigningByTeacher[t.id] ? 'Assigning...' : `Assign ${(assignCoursesByTeacher[t.id] || []).length} course(s)`}
+                            {assigningByTeacher[t.id] ? 'Assigning...' : `Assign ${ (assignCoursesByTeacher[t.id] || []).length } course(s)`}
                           </button>
                         )}
-                      </div>
+                      </>
                     ) : (
-                      <span style={{ fontSize: 12, color: '#999' }}>Assistant</span>
+                      <span style={{ fontSize: 13, color: '#9ca3af' }}>N/A (Assistant)</span>
                     )}
                   </td>
                 </tr>
@@ -308,7 +326,7 @@ export default function SchoolTeachersPage() {
         </div>
       )}
       {!loading && teachers.length === 0 && (
-        <p style={{ color: '#666', fontSize: 13 }}>No teachers or assistants yet.</p>
+        <p style={{ color: '#666', fontSize: 13, textAlign: 'center' }}>No teachers or assistants yet. Create one above!</p>
       )}
     </div>
   );

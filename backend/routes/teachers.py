@@ -218,11 +218,24 @@ def list_teachers():
                 return jsonify({'error': 'school_id query param is required'}), 400
 
         # If requester is None, pass no requester_id/role to User.get_all (will return all for school)
-        requester_id = requester['id'] if requester else None
-        requester_role = requester['role'] if requester else None
-
-        users = User.get_all(include_super_admin=False, school_id=school_id, requester_id=requester_id, requester_role=requester_role)
-        filtered = [u.to_dict() for u in users if u.role in ('TEACHER', 'ASSISTANT')]
+        # Direct query for teachers/assistants to bypass secretary restrictions in User.get_all()
+        conn = get_connection()
+        requester_school_type = requester['school_type'] if requester else None
+        with conn.cursor() as cursor:
+            params = [school_id]
+            query = """
+                SELECT id, name, email, role, created_at, school_id, class_id, unique_id, profile_image, status, school_type
+                FROM users 
+                WHERE school_id = %s AND role IN ('TEACHER', 'ASSISTANT')
+            """
+            if requester_school_type:
+                query += " AND school_type = %s"
+                params.append(requester_school_type)
+            query += " ORDER BY name"
+            cursor.execute(query, params)
+            users_data = cursor.fetchall()
+        users = [User.from_dict(u) for u in users_data]
+        filtered = [u.to_dict() for u in users]
 
         
         teacher_ids = [u['id'] for u in filtered]
@@ -322,7 +335,7 @@ def create_course(teacher_id):
             return jsonify({'error': 'Course name required'}), 400
 
         # ensure teacher exists and is a teacher
-        teacher = User.get_by_id(teacher_id)
+        teacher = User.get_by_id(teacher_id, requester_school_type=requester['school_type'] if requester else None)
         if not teacher or teacher.role not in ('TEACHER', 'ASSISTANT'):
             return jsonify({'error': 'Teacher/assistant not found'}), 404
 

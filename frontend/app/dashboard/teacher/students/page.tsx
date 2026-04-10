@@ -28,7 +28,7 @@ export default function TeacherStudentsPage() {
     if (effectiveLoading || !effectiveUser?.id || !effectiveUser?.school_id) return;
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/api/classes/?school_id=${effectiveUser.school_id}`, {
+      const res = await fetch(`${API_URL}/api/classes?school_id=${effectiveUser.school_id || 0}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Failed to load classes");

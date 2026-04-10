@@ -1,4 +1,4 @@
-"use client";
+ "use client";
 import { useEffect, useState, useCallback } from "react";
 import { useEffectiveUser } from "@/utils/auth";
 
@@ -114,7 +114,8 @@ export default function TeacherGradesPage() {
   const [savingConfig, setSavingConfig] = useState(false);
 
   // Grade config for dynamic periods
-  const [gradeConfig, setGradeConfig] = useState({max_periods: 3, school_type: 'primaire'} as any);
+const schoolType = localStorage.getItem('school_type') || 'primaire';
+  const [gradeConfig, setGradeConfig]
 
   // Find teacher's class - FIXED: use effectiveUser, useCallback
   const fetchData = useCallback(async () => {

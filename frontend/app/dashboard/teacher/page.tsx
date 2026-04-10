@@ -23,7 +23,7 @@ export default function TeacherDashboard() {
     const fetchData = async () => {
       try {
         const token = localStorage.getItem("token");
-        const classRes = await fetch(`${API_URL}/api/classes/?school_id=${effectiveUser.school_id}`, {
+        const classRes = await fetch(`${API_URL}/api/classes?school_id=${effectiveUser.school_id || 0}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (classRes.ok) {

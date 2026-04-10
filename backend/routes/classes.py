@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request
 from models import ClassModel, User, School, get_allowed_class_names, PRIMAIRE_CLASSES, SECONDAIRE_CLASSES, MATERNELLE_CLASSES
+from routes.auth import get_requester_from_auth
 import re
 
 classes_bp = Blueprint('classes', __name__)
@@ -106,7 +107,8 @@ def get_classes():
 
     try:
         _ensure_level_column()
-        classes = ClassModel.get_by_school(school_id, level=level)
+        requester = get_requester_from_auth()
+        classes = ClassModel.get_by_school(school_id, level=level, requester_school_type=requester['school_type'] if requester else None)
 
         # Optional validation skipped for public reads (requester=None)
 
@@ -132,7 +134,7 @@ def get_classes():
             "debug": {
                 "school_id": school_id,
                 "level": level,
-            "requester_type": None,
+            "requester_type": requester['role'] if 'requester' in locals() and requester else None,
                 "count": len(classes),
                 "db": db_name,
                 "db_host": db_host,

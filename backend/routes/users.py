@@ -6,11 +6,15 @@ users_bp = Blueprint('users', __name__)
 # ================= GET ALL USERS =================
 @users_bp.route("/", methods=["GET"])
 def get_users():
+    from .auth import get_requester_from_auth
     try:
+        requester = get_requester_from_auth()
         school_id = request.args.get("school_id")
-        # For SCHOOL_ADMIN, show all users in their school (no restrictions)
-        users = User.get_all(school_id=school_id, include_super_admin=False)  # Returns list of User instances
-        print(f"[DEBUG] Fetched {len(users)} users for school_id={school_id}")  # Debug
+        requester_school_type = requester['school_type'] if requester else None
+        # For SUPER_ADMIN show all, else filter
+        include_super_admin = requester and requester.get('role') == 'SUPER_ADMIN' if requester else False
+        users = User.get_all(school_id=school_id, requester_school_type=requester_school_type, include_super_admin=include_super_admin)
+        print(f"[DEBUG] Fetched {len(users)} users for school_id={school_id}, school_type={requester_school_type}")  # Debug
         users_json = [user.to_dict() for user in users]
         return jsonify({"users": users_json})
     except Exception as e:
@@ -20,8 +24,11 @@ def get_users():
 # ================= GET USER BY ID =================
 @users_bp.route("/<int:user_id>", methods=["GET"])
 def get_user(user_id):
+    from .auth import get_requester_from_auth
     try:
-        user = User.get_by_id(user_id)
+        requester = get_requester_from_auth()
+        requester_school_type = requester['school_type'] if requester else None
+        user = User.get_by_id(user_id, requester_school_type=requester_school_type)
         if user:
             return jsonify(user.to_dict())
         return jsonify({"error": "User not found"}), 404

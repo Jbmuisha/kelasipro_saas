@@ -70,23 +70,26 @@ class User:
         }
 
     @classmethod
-    def get_all(cls, include_super_admin=True, school_id=None, requester_id=None, requester_role=None):
-        """Get all users from database. If requester is SECRETARY, limit results to students and parents they created or parents of their students."""
+    def get_all(cls, include_super_admin=True, school_id=None, requester_school_type=None, requester_id=None, requester_role=None):
+        """Get all users from database. If requester is SECRETARY, limit results to students and parents they created or parents of their students.
+        Filter by requester_school_type for isolation."""
         try:
             conn = get_connection()
             with conn.cursor() as cursor:
                 params = []
                 # Base query
-                query = "SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, created_by, admin_level FROM users WHERE 1=1"
+                query = "SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, created_by, admin_level, school_type FROM users WHERE 1=1"
 
                 if not include_super_admin:
                     query += " AND role != 'SUPER_ADMIN'"
                 if school_id:
                     query += " AND school_id = %s"
                     params.append(school_id)
+                if requester_school_type:
+                    query += " AND school_type = %s"
+                    params.append(requester_school_type)
 
                 # If requester is SECRETARY, restrict
-                # If requester is SECRETARY or SCHOOL_ADMIN, restrict to users they created (and for SECRETARY also parents of their students)
                 if requester_role in ('SECRETARY', 'SCHOOL_ADMIN') and requester_id:
                     # Ensure created_by column exists
                     cursor.execute("SHOW COLUMNS FROM users LIKE 'created_by'")
@@ -137,7 +140,7 @@ class User:
                     if not allowed_ids:
                         return []
                     format_allowed = ','.join(['%s'] * len(allowed_ids))
-                    query = f"SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, created_by, admin_level FROM users WHERE id IN ({format_allowed})"
+                    query = f"SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, created_by, admin_level, school_type FROM users WHERE id IN ({format_allowed})"
                     cursor.execute(query, tuple(allowed_ids))
                     users_data = cursor.fetchall()
                 else:
@@ -169,21 +172,26 @@ class User:
             return []
 
     @classmethod
-    def get_by_id(cls, user_id):
-        """Get a single user by ID"""
+    def get_by_id(cls, user_id, requester_school_type=None):
+        """Get a single user by ID. Filter by requester_school_type for isolation."""
         conn = get_connection()
         with conn.cursor() as cursor:
-            cursor.execute("""
-                SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, admin_level
+            params = [user_id]
+            query = """
+                SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, admin_level, school_type
                 FROM users
                 WHERE id = %s
-            """, (user_id,))
+            """
+            if requester_school_type:
+                query += " AND school_type = %s"
+                params.append(requester_school_type)
+            cursor.execute(query, params)
             data = cursor.fetchone()
             
             if data:
                 if data['role'] == 'PARENT':
                     cursor.execute("""
-                        SELECT u.id, u.name, u.email, u.class_id 
+                        SELECT u.id, u.name, u.email, u.class_id, u.school_type 
                         FROM users u
                         JOIN parent_student ps ON u.id = ps.student_id
                         WHERE ps.parent_id = %s
@@ -191,7 +199,7 @@ class User:
                     data['children'] = cursor.fetchall()
                 elif data['role'] == 'STUDENT':
                     cursor.execute("""
-                        SELECT u.id, u.name, u.email 
+                        SELECT u.id, u.name, u.email, u.school_type
                         FROM users u
                         JOIN parent_student ps ON u.id = ps.parent_id
                         WHERE ps.student_id = %s
@@ -375,13 +383,14 @@ class ClassModel:
         }
 
     @classmethod
-    def get_by_school(cls, school_id, level=None):
+    def get_by_school(cls, school_id, level=None, requester_school_type=None):
         conn = get_connection()
         with conn.cursor() as cursor:
             # Check if main_teacher_id column exists
             cursor.execute("SHOW COLUMNS FROM classes LIKE 'main_teacher_id'")
             has_main_teacher = cursor.fetchone() is not None
 
+            params = [school_id]
             if has_main_teacher:
                 base_query = (
                     "SELECT c.*, u.name as main_teacher_name "
@@ -391,12 +400,17 @@ class ClassModel:
             else:
                 base_query = "SELECT c.* FROM classes c WHERE c.school_id=%s"
 
+            if requester_school_type:
+                base_query += " AND EXISTS (SELECT 1 FROM schools s WHERE s.id = c.school_id AND s.school_type = %s)"
+                params.append(requester_school_type)
+
             if level:
                 base_query += " AND c.level=%s ORDER BY c.name ASC"
-                cursor.execute(base_query, (school_id, level))
+                params.append(level)
             else:
                 base_query += " ORDER BY c.name ASC"
-                cursor.execute(base_query, (school_id,))
+
+            cursor.execute(base_query, params)
             data = cursor.fetchall()
         return [cls.from_dict(d) for d in data]
 

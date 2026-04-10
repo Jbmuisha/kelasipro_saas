@@ -182,3 +182,42 @@ def logout():
     
     print(f"[LOGOUT] User {requester['id']} ({requester['role']}) logged out")
     return jsonify({"message": "Logout successful"}), 200
+
+
+@auth_bp.route("/admin/impersonate/<int:teacher_id>", methods=["POST"])
+def impersonate(teacher_id):
+    """Generate real JWT token for admin to impersonate a teacher. 
+    Only SCHOOL_ADMIN (same school_type) or SUPER_ADMIN."""
+    requester = get_requester_from_auth()
+    if not requester:
+        return jsonify({"error": "Invalid token"}), 401
+    
+    if requester.get('role') not in ('SCHOOL_ADMIN', 'SUPER_ADMIN'):
+        return jsonify({"error": "Only SCHOOL_ADMIN or SUPER_ADMIN can impersonate"}), 403
+    
+    from models import User
+    teacher = User.get_by_id(teacher_id, requester_school_type=requester.get('school_type'))
+    if not teacher or teacher.role not in ('TEACHER', 'ASSISTANT'):
+        return jsonify({"error": "Teacher not found or access denied"}), 404
+    
+    # Generate JWT with teacher's payload
+    import jwt, os
+    SECRET = os.getenv("JWT_SECRET", "supersecretkey")
+    payload = {
+        "id": teacher.id,
+        "role": teacher.role,
+        "school_id": getattr(teacher, 'school_id', None),
+        "school_type": getattr(teacher, 'school_type', None),
+    }
+    token = jwt.encode(payload, SECRET, algorithm="HS256")
+    
+    print(f"[IMPERSONATE] {requester['role']} {requester['id']} impersonating teacher {teacher.id}")
+    
+    safe_user = serialize_user({
+        'id': teacher.id, 'name': teacher.name, 'email': teacher.email,
+        'role': teacher.role, 'school_id': getattr(teacher, 'school_id', None),
+        'school_type': getattr(teacher, 'school_type', None), 'unique_id': getattr(teacher, 'unique_id', None),
+        'profile_image': getattr(teacher, 'profile_image', None)
+    })
+    
+    return jsonify({"token": token, "user": safe_user})
