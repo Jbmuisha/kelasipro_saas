@@ -19,8 +19,8 @@ app = Flask(__name__)
 # Allow all /api/* routes including file uploads.
 CORS(
     app,
-    resources={r"/api/*": {"origins": "*"}},
-    supports_credentials=False,
+    resources={r"/api/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}},
+    supports_credentials=True,
     allow_headers=["Content-Type", "Authorization"],
 )
 

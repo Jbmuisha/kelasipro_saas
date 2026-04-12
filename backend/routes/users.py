@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request
-from models import User
+from models import User, School
 
 users_bp = Blueprint('users', __name__)
 
@@ -43,12 +43,6 @@ def create_user():
     try:
         requester_id = data.get("requester_id")
         # Get school_type from school_id
-        school_type = None
-        if data.get("school_id"):
-            school = School.get_by_id(data["school_id"])
-            if school:
-                school_type = school.school_type
-
         user = User.create(
             name=data.get("name"),
             email=data.get("email"),
@@ -57,8 +51,7 @@ def create_user():
             school_id=data.get("school_id"),
             class_id=data.get("class_id"),
             created_by=requester_id,
-            admin_level=school_type,  # Use school_type
-            school_type=school_type  # New field
+            admin_level=data.get("admin_level")
         )
         
         update_args = {}

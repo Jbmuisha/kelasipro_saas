@@ -108,7 +108,9 @@ def get_classes():
     try:
         _ensure_level_column()
         requester = get_requester_from_auth()
-        classes = ClassModel.get_by_school(school_id, level=level, requester_school_type=requester['school_type'] if requester else None)
+        requester_school_type = requester['school_type'] if requester else None
+        requester_role = requester['role'] if requester else None
+        classes = ClassModel.get_by_school(school_id, level=level, requester_school_type=requester_school_type, requester_role=requester_role)
 
         # Optional validation skipped for public reads (requester=None)
 

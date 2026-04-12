@@ -73,6 +73,7 @@ class User:
     def get_all(cls, include_super_admin=True, school_id=None, requester_school_type=None, requester_id=None, requester_role=None):
         """Get all users from database. If requester is SECRETARY, limit results to students and parents they created or parents of their students.
         Filter by requester_school_type for isolation."""
+        users_data = []
         try:
             conn = get_connection()
             with conn.cursor() as cursor:
@@ -85,11 +86,11 @@ class User:
                 if school_id:
                     query += " AND school_id = %s"
                     params.append(school_id)
-                if requester_school_type:
+                if requester_school_type and requester_role in ('TEACHER', 'SECRETARY', 'ASSISTANT', 'PARENT', 'STUDENT'):
                     query += " AND school_type = %s"
                     params.append(requester_school_type)
 
-                # If requester is SECRETARY, restrict
+                # If requester is SECRETARY/SCHOOL_ADMIN, restrict
                 if requester_role in ('SECRETARY', 'SCHOOL_ADMIN') and requester_id:
                     # Ensure created_by column exists
                     cursor.execute("SHOW COLUMNS FROM users LIKE 'created_by'")
@@ -98,37 +99,29 @@ class User:
                         return []
 
                     if requester_role == 'SCHOOL_ADMIN':
-                        # School admin should see all users for their school via school_users mapping
-                        # Ensure school_users table exists
-                        cursor.execute("SHOW TABLES LIKE 'school_users'")
-                        if cursor.fetchone():
-                            # Use school_id parameter to fetch members
-                            if not school_id:
-                                # if no school_id provided fall back to created_by behavior
-                                cursor.execute("SELECT id FROM users WHERE created_by=%s", (requester_id,))
-                                rows = cursor.fetchall()
-                                allowed_ids = [r['id'] for r in rows]
-                            else:
-                                cursor.execute("SELECT user_id FROM school_users WHERE school_id=%s", (school_id,))
-                                rows = cursor.fetchall()
-                                allowed_ids = [r['user_id'] for r in rows]
+                        # School admin sees all users for their school
+                        if school_id:
+                            cursor.execute(query, tuple(params))
+                            users_data = cursor.fetchall()
                         else:
-                            # fallback: if mapping table missing, fall back to created_by behavior
                             cursor.execute("SELECT id FROM users WHERE created_by=%s", (requester_id,))
                             rows = cursor.fetchall()
                             allowed_ids = [r['id'] for r in rows]
+                            if allowed_ids:
+                                format_allowed = ','.join(['%s'] * len(allowed_ids))
+                                q = f"SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, created_by, admin_level, school_type FROM users WHERE id IN ({format_allowed})"
+                                cursor.execute(q, tuple(allowed_ids))
+                                users_data = cursor.fetchall()
                     else:
-                        # SECRETARY: Return students created by this secretary and parents created by this secretary or parents of those students
+                        # SECRETARY restrictions
                         cursor.execute("SELECT id FROM users WHERE role='STUDENT' AND created_by=%s", (requester_id,))
                         student_rows = cursor.fetchall()
                         student_ids = [r['id'] for r in student_rows]
 
-                        # Get parent ids who were created by requester
                         cursor.execute("SELECT id FROM users WHERE role='PARENT' AND created_by=%s", (requester_id,))
                         parent_rows = cursor.fetchall()
                         parent_ids = [r['id'] for r in parent_rows]
 
-                        # Get parents linked to those students
                         if student_ids:
                             format_ids = ','.join(['%s'] * len(student_ids))
                             cursor.execute(f"SELECT parent_id FROM parent_student WHERE student_id IN ({format_ids})", tuple(student_ids))
@@ -136,13 +129,11 @@ class User:
                             parent_ids += [r['parent_id'] for r in linked_parents]
 
                         allowed_ids = student_ids + parent_ids
-
-                    if not allowed_ids:
-                        return []
-                    format_allowed = ','.join(['%s'] * len(allowed_ids))
-                    query = f"SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, created_by, admin_level, school_type FROM users WHERE id IN ({format_allowed})"
-                    cursor.execute(query, tuple(allowed_ids))
-                    users_data = cursor.fetchall()
+                        if allowed_ids:
+                            format_allowed = ','.join(['%s'] * len(allowed_ids))
+                            q = f"SELECT id, name, email, role, created_at, school_id, class_id, password, status, profile_image, unique_id, created_by, admin_level, school_type FROM users WHERE id IN ({format_allowed})"
+                            cursor.execute(q, tuple(allowed_ids))
+                            users_data = cursor.fetchall()
                 else:
                     query += " ORDER BY created_at DESC"
                     cursor.execute(query, tuple(params))
@@ -172,7 +163,7 @@ class User:
             return []
 
     @classmethod
-    def get_by_id(cls, user_id, requester_school_type=None):
+    def get_by_id(cls, user_id, requester_school_type=None, requester_role=None):
         """Get a single user by ID. Filter by requester_school_type for isolation."""
         conn = get_connection()
         with conn.cursor() as cursor:
@@ -182,7 +173,7 @@ class User:
                 FROM users
                 WHERE id = %s
             """
-            if requester_school_type:
+            if requester_school_type and requester_role in ('TEACHER', 'SECRETARY', 'ASSISTANT', 'PARENT', 'STUDENT'):
                 query += " AND school_type = %s"
                 params.append(requester_school_type)
             cursor.execute(query, params)
@@ -383,7 +374,7 @@ class ClassModel:
         }
 
     @classmethod
-    def get_by_school(cls, school_id, level=None, requester_school_type=None):
+    def get_by_school(cls, school_id, level=None, requester_school_type=None, requester_role=None):
         conn = get_connection()
         with conn.cursor() as cursor:
             # Check if main_teacher_id column exists
@@ -400,7 +391,7 @@ class ClassModel:
             else:
                 base_query = "SELECT c.* FROM classes c WHERE c.school_id=%s"
 
-            if requester_school_type:
+            if requester_school_type and requester_role in ('TEACHER', 'SECRETARY', 'ASSISTANT', 'PARENT', 'STUDENT'):
                 base_query += " AND EXISTS (SELECT 1 FROM schools s WHERE s.id = c.school_id AND s.school_type = %s)"
                 params.append(requester_school_type)
 
