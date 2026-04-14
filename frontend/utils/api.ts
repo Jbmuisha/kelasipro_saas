@@ -21,9 +21,21 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}): Pro
     },
   };
 
-  console.log(`[API] ${options.method || 'GET'} ${url} (token: ${!!token})`);
+  console.log(`[API FETCH] ${options.method || 'GET'} ${url} (token: ${!!token}) → START`);
   
-  return fetch(url, config);
+  try {
+    const response = await fetch(url, config);
+    console.log(`[API FETCH] ${options.method || 'GET'} ${url} → ${response.status} ${response.statusText}`);
+    if (!response.ok) {
+      const text = await response.text();
+      console.error(`[API ERROR] ${response.status} ${text}`);
+      throw new Error(text || `HTTP ${response.status}`);
+    }
+    return response;
+  } catch (err) {
+    console.error(`[API NETWORK ERROR] ${url}:`, err);
+    throw err;
+  }
 }
 
 // GET helper

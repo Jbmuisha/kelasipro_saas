@@ -96,7 +96,7 @@ def assign_teacher_to_class(class_id):
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-@classes_bp.route("/", methods=["GET"]) 
+@classes_bp.route("/", methods=["GET", "OPTIONS"])
 def get_classes():
     school_id = request.args.get("school_id")
     level = request.args.get("level")
@@ -146,13 +146,16 @@ def get_classes():
         return jsonify({"error": str(e)}), 500
 
 
-@classes_bp.route("/", methods=["POST"]) 
+@classes_bp.route("/", methods=["POST", "OPTIONS"])
 def create_class():
     data = request.json
     school_id = data.get("school_id")
     name = data.get("name")
     created_by = data.get("created_by")
     level = data.get("level")
+
+    if request.method == 'OPTIONS':
+        return '', 200
 
     if not school_id or not name or not created_by:
         return jsonify({"error": "school_id, name and created_by are required"}), 400

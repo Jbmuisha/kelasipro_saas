@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { FaPlus, FaEdit, FaSpinner, FaSearch, FaTimes } from "react-icons/fa";
-import { getApiBase } from "@/utils/apiBase";
+import { apiGet, apiPost } from "@/utils/api";
 import "@/app/dashboard/school/classes.css";
 
 interface Class {
@@ -15,17 +15,6 @@ interface Class {
   created_at?: string;
 }
 
-interface ApiResponse {
-  classes: Class[];
-  debug?: {
-    school_id: number;
-    level: string;
-    count: number;
-    db?: string;
-    requester_type?: string | null;
-  };
-}
-
 const LEVELS = [
   { key: "maternelle", label: "Maternelle", icon: "👶", classes: ["1ere maternelle", "2eme maternelle", "3eme maternelle"] },
   { key: "primaire", label: "Primaire", icon: "📚", classes: ["1ere primaire", "2eme primaire", "3eme primaire", "4eme primaire", "5eme primaire", "6eme primaire"] },
@@ -33,60 +22,40 @@ const LEVELS = [
 ];
 
 export default function ClassesPage() {
-  const [activeType, setActiveType] = useState<string>("primaire");
-  const [classesByType, setClassesByType] = useState<{ [key: string]: Class[] }>({});
+  const [activeType, setActiveType] = useState("primaire");
+  const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [schoolId, setSchoolId] = useState<number | null>(null);
-  const [schoolType, setSchoolType] = useState("primaire");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedBaseClass, setSelectedBaseClass] = useState("");
   const [classSuffix, setClassSuffix] = useState("");
   const [creating, setCreating] = useState(false);
   const router = useRouter();
 
-  // Load school_id and school_type from localStorage
   useEffect(() => {
-    const userStr = localStorage.getItem("user");
-    const schoolTypeSaved = localStorage.getItem("school_type") || "primaire";
-    if (userStr) {
-      try {
-        const user = JSON.parse(userStr);
-        setSchoolId(user.school_id || parseInt(localStorage.getItem("school_id") || "0"));
-        const lockedType = user.admin_level || schoolTypeSaved;
-        setSchoolType(lockedType);
-        setActiveType(lockedType);
-      } catch {}
-    } else {
-      setError("User not authenticated. Please log in.");
+    if (typeof window !== 'undefined') {
+      const id = parseInt(localStorage.getItem("school_id") || "0");
+      setSchoolId(id);
     }
   }, []);
 
   const fetchClasses = useCallback(async (level: string) => {
     if (!schoolId) return;
-
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('token') || '';
       const params = new URLSearchParams({ school_id: schoolId.toString(), level });
-      const response = await fetch(`${getApiBase()}/api/classes?${params}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data: ApiResponse = await response.json();
-
-      setClassesByType((prev) => ({ ...prev, [level]: data.classes || [] }));
-      
-      if (!data.classes?.length && data.debug) {
-        console.log("[DEBUG Classes]", data.debug);
-        if (data.debug.count === 0) {
-          setError(`No classes found for ${level}. Create your first class!`);
-        }
+      const data = await apiGet(`/classes?${params}`);
+      const fetchedClasses = data.classes || [];
+      setClasses(fetchedClasses);
+      if (data.debug?.count === 0) {
+        setError(`No ${level} classes. Create first!`);
       }
     } catch (err: any) {
-      setError(`Failed to fetch classes: ${err.message}`);
+      console.error("Classes fetch failed:", err);
+      setError("Failed to load classes");
     } finally {
       setLoading(false);
     }
@@ -98,68 +67,50 @@ export default function ClassesPage() {
     }
   }, [schoolId, activeType, fetchClasses]);
 
-  const filteredClasses = classesByType[activeType]?.filter((cls) =>
-    cls.name.toLowerCase().includes(searchTerm.toLowerCase())
-  ) || [];
-
+  const filteredClasses = classes.filter(cls => cls.name.toLowerCase().includes(searchTerm.toLowerCase()));
   const currentLevel = LEVELS.find(l => l.key === activeType)!;
 
-  const handleCreateClass = async () => {
-    if (!selectedBaseClass.trim() || !classSuffix.trim() || !schoolId) return;
-
-    const fullName = `${selectedBaseClass} ${classSuffix}`;
+  const handleCreate = async () => {
+    if (!selectedBaseClass || !classSuffix || !schoolId) return;
     
+    const fullName = `${selectedBaseClass} ${classSuffix}`;
     setCreating(true);
     try {
-      const token = localStorage.getItem('token') || '';
-      const userStr = localStorage.getItem('user') || '{}';
+      const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') || '{}' : '{}';
       const user = JSON.parse(userStr);
-      const response = await fetch(`${getApiBase()}/api/classes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          school_id: schoolId,
-          name: fullName,
-          level: activeType,
-          created_by: user.id
-        })
+      await apiPost('/classes', {
+        school_id: schoolId,
+        name: fullName,
+        level: activeType,
+        created_by: user.id
       });
-
-      if (!response.ok) {
-        const err = await response.text();
-        throw new Error(err);
-      }
-
-      setSelectedBaseClass("");
-      setClassSuffix("");
       setShowCreateModal(false);
+      setSelectedBaseClass('');
+      setClassSuffix('');
       fetchClasses(activeType);
     } catch (err: any) {
-      alert(`Error creating class: ${err.message}`);
+      console.error("Class create failed:", err);
+      alert(`Create failed: ${err.message}`);
     } finally {
       setCreating(false);
     }
   };
 
   if (!schoolId) {
-    return <div className="classes-empty">Loading school info...</div>;
+    return <div className="loading">Loading school info...</div>;
   }
 
   return (
     <div className="classes-page">
       <div className="page-header">
-        <h1>Classes - {currentLevel.label}</h1>
+        <h1>{currentLevel.icon} Classes - {currentLevel.label}</h1>
         <div className="header-actions">
           <div className="search-container">
             <FaSearch />
-            <input
-              type="text"
-              placeholder="Search classes..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+            <input 
+              placeholder="Search classes..." 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
             />
           </div>
           <button onClick={() => setShowCreateModal(true)} className="btn-primary">
@@ -169,12 +120,11 @@ export default function ClassesPage() {
       </div>
 
       <div className="level-tabs">
-        {LEVELS.map((level) => (
-          <button
-            key={level.key}
-            className={`tab ${activeType === level.key ? "active" : ""}`}
+        {LEVELS.map(level => (
+          <button 
+            key={level.key} 
+            className={`tab ${activeType === level.key ? "active" : ""}`} 
             onClick={() => setActiveType(level.key)}
-            disabled={schoolType !== "mixed" && schoolType !== level.key}
           >
             {level.icon} {level.label}
           </button>
@@ -182,9 +132,7 @@ export default function ClassesPage() {
       </div>
 
       {loading ? (
-  <div className="loading">
-          ⏳ Loading classes...
-        </div>
+        <div className="loading">⏳ Loading classes...</div>
       ) : error ? (
         <div className="error">{error}</div>
       ) : filteredClasses.length === 0 ? (
@@ -195,7 +143,7 @@ export default function ClassesPage() {
         </div>
       ) : (
         <div className="classes-grid">
-          {filteredClasses.map((cls) => (
+          {filteredClasses.map(cls => (
             <div key={cls.id} className="class-card">
               <h3>{cls.name}</h3>
               {cls.main_teacher_name && (
@@ -211,7 +159,6 @@ export default function ClassesPage() {
         </div>
       )}
 
-      {/* CREATE CLASS MODAL */}
       {showCreateModal && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -251,19 +198,17 @@ export default function ClassesPage() {
               </button>
               <button 
                 className="btn-save" 
-                onClick={handleCreateClass}
+                onClick={handleCreate}
                 disabled={!selectedBaseClass || !classSuffix || creating}
               >
-{creating ? '⏳' : <FaPlus />}
+                {creating ? '⏳' : <FaPlus />}
                 {creating ? "Creating..." : "Create Class"}
               </button>
             </div>
           </div>
         </div>
       )}
-
-
-        
     </div>
   );
 }
+
