@@ -58,6 +58,9 @@ export default function LoginPage() {
         localStorage.removeItem("user");
         localStorage.removeItem("school_id");
         localStorage.removeItem("school_type");
+        localStorage.removeItem("impersonation");
+        localStorage.removeItem("admin_token_backup");
+        localStorage.removeItem("admin_user_backup");
 
         // Store new session data
         localStorage.setItem("token", data.token);
@@ -67,10 +70,12 @@ export default function LoginPage() {
           localStorage.setItem("school_id", String(data.user.school_id));
         }
 
-        // Store admin_level as school_type if available
-        if (data.user.admin_level) {
-          localStorage.setItem("school_type", data.user.admin_level);
-        }
+        // Always set school_type deterministically from the logged-in user.
+        // This prevents stale level from a previous session (primaire/secondaire/maternelle)
+        // from leaking into the new session.
+        const resolvedSchoolType =
+          (data.user.admin_level || data.user.school_type || "primaire").toLowerCase();
+        localStorage.setItem("school_type", resolvedSchoolType);
 
         // CRITICAL: Set cookie for middleware
         document.cookie = `token=${data.token}; path=/; SameSite=Strict; Secure=false`;

@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { FaPlus, FaEdit, FaSpinner, FaSearch, FaTimes } from "react-icons/fa";
+import { FaPlus, FaSearch, FaTimes } from "react-icons/fa";
 import { apiGet, apiPost } from "@/utils/api";
 import "@/app/dashboard/school/classes.css";
 
@@ -13,6 +12,11 @@ interface Class {
   main_teacher_id?: number;
   main_teacher_name?: string;
   created_at?: string;
+}
+
+interface TeacherOption {
+  id: number;
+  name: string;
 }
 
 const LEVELS = [
@@ -28,16 +32,29 @@ export default function ClassesPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [schoolId, setSchoolId] = useState<number | null>(null);
+  const [userAdminLevel, setUserAdminLevel] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedBaseClass, setSelectedBaseClass] = useState("");
   const [classSuffix, setClassSuffix] = useState("");
+  const [secondaryOption, setSecondaryOption] = useState("");
+  const [customSecondaryOption, setCustomSecondaryOption] = useState("");
   const [creating, setCreating] = useState(false);
-  const router = useRouter();
+  const [teachers, setTeachers] = useState<TeacherOption[]>([]);
+  const [selectedTeacherByClass, setSelectedTeacherByClass] = useState<Record<number, string>>({});
+  const [assigningByClass, setAssigningByClass] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const id = parseInt(localStorage.getItem("school_id") || "0");
       setSchoolId(id);
+      const u = localStorage.getItem("user");
+      if (u) {
+        try {
+          const user = JSON.parse(u);
+          setUserAdminLevel(user?.admin_level || user?.school_type || null);
+        } catch {}
+      }
     }
   }, []);
 
@@ -61,19 +78,70 @@ export default function ClassesPage() {
     }
   }, [schoolId]);
 
+  const fetchTeachers = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      const data = await apiGet(`/teachers?school_id=${schoolId}`);
+      const list: TeacherOption[] = (data.teachers || [])
+        .filter((u: any) => u.role === "TEACHER")
+        .map((u: any) => ({ id: Number(u.id), name: String(u.name || `Teacher #${u.id}`) }));
+      setTeachers(list);
+    } catch (err) {
+      console.error("Teachers fetch failed:", err);
+    }
+  }, [schoolId]);
+
   useEffect(() => {
     if (schoolId) {
       fetchClasses(activeType);
+      fetchTeachers();
     }
-  }, [schoolId, activeType, fetchClasses]);
+  }, [schoolId, activeType, fetchClasses, fetchTeachers]);
+
+  useEffect(() => {
+    if (!userAdminLevel || !activeType) return;
+    const myLevel = userAdminLevel.toLowerCase();
+    const targetLevel = activeType.toLowerCase();
+
+    // For MIXED schools (mixed/mixte) → all levels allowed
+    if (myLevel === "mixed" || myLevel === "mixte") {
+      setAccessDenied(null);
+      return;
+    }
+
+    // For single-level admins → verify they access only their level
+    const allowed =
+      (myLevel === "primaire" && targetLevel === "primaire") ||
+      (myLevel === "maternelle" && targetLevel === "maternelle") ||
+      (myLevel === "secondaire" && targetLevel === "secondaire");
+
+    if (!allowed) {
+      setAccessDenied(`⛔ Access denied. You are assigned to manage ${myLevel.charAt(0).toUpperCase() + myLevel.slice(1)} only.`);
+    } else {
+      setAccessDenied(null);
+    }
+  }, [userAdminLevel, activeType]);
 
   const filteredClasses = classes.filter(cls => cls.name.toLowerCase().includes(searchTerm.toLowerCase()));
   const currentLevel = LEVELS.find(l => l.key === activeType)!;
+  const requiresSecondaryOption =
+    activeType === "secondaire" &&
+    ["1ere secondaire", "2eme secondaire", "3eme secondaire", "4eme secondaire"].includes(selectedBaseClass);
+  const SECONDARY_OPTIONS = ["Littéraire", "Pédagogie", "Physique", "Scientifique", "Commerciale", "Autre..."];
+  const effectiveSecondaryOption = secondaryOption === "Autre..."
+    ? customSecondaryOption.trim()
+    : secondaryOption;
 
   const handleCreate = async () => {
     if (!selectedBaseClass || !classSuffix || !schoolId) return;
-    
-    const fullName = `${selectedBaseClass} ${classSuffix}`;
+    if (requiresSecondaryOption && !effectiveSecondaryOption) {
+      alert("Choisissez l'option pour cette classe secondaire");
+      return;
+    }
+
+    const fullName = requiresSecondaryOption
+      ? `${selectedBaseClass} ${effectiveSecondaryOption} ${classSuffix}`
+      : `${selectedBaseClass} ${classSuffix}`;
     setCreating(true);
     try {
       const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') || '{}' : '{}';
@@ -87,6 +155,8 @@ export default function ClassesPage() {
       setShowCreateModal(false);
       setSelectedBaseClass('');
       setClassSuffix('');
+      setSecondaryOption('');
+      setCustomSecondaryOption('');
       fetchClasses(activeType);
     } catch (err: any) {
       console.error("Class create failed:", err);
@@ -96,12 +166,46 @@ export default function ClassesPage() {
     }
   };
 
+  const handleAssignPrincipal = async (classId: number) => {
+    const teacherId = selectedTeacherByClass[classId];
+    if (!teacherId) {
+      alert("Select a teacher first");
+      return;
+    }
+
+    const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') || '{}' : '{}';
+    const user = JSON.parse(userStr);
+    if (!user?.id) {
+      alert("Missing current user");
+      return;
+    }
+
+    setAssigningByClass((prev) => ({ ...prev, [classId]: true }));
+    try {
+      await apiPost(`/classes/${classId}/assign-teacher`, {
+        teacher_id: Number(teacherId),
+        created_by: Number(user.id),
+      });
+      await fetchClasses(activeType);
+    } catch (err: any) {
+      console.error("Assign principal failed:", err);
+      alert(`Assign failed: ${err.message}`);
+    } finally {
+      setAssigningByClass((prev) => ({ ...prev, [classId]: false }));
+    }
+  };
+
   if (!schoolId) {
     return <div className="loading">Loading school info...</div>;
   }
 
   return (
     <div className="classes-page">
+      {accessDenied && (
+        <div style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#991b1b", padding: 16, borderRadius: 8, marginBottom: 16, textAlign: "center", fontWeight: 600 }}>
+          {accessDenied}
+        </div>
+      )}
       <div className="page-header">
         <h1>{currentLevel.icon} Classes - {currentLevel.label}</h1>
         <div className="header-actions">
@@ -150,8 +254,23 @@ export default function ClassesPage() {
                 <p><strong>Main Teacher:</strong> {cls.main_teacher_name}</p>
               )}
               <div className="card-actions">
-                <button className="btn-secondary" onClick={() => router.push(`/dashboard/school/classes/${cls.id}`)}>
-                  <FaEdit /> Manage
+                <select
+                  value={selectedTeacherByClass[cls.id] || ""}
+                  onChange={(e) =>
+                    setSelectedTeacherByClass((prev) => ({ ...prev, [cls.id]: e.target.value }))
+                  }
+                >
+                  <option value="">Assign principale...</option>
+                  {teachers.map((t) => (
+                    <option key={t.id} value={String(t.id)}>{t.name}</option>
+                  ))}
+                </select>
+                <button
+                  className="btn-secondary"
+                  onClick={() => handleAssignPrincipal(cls.id)}
+                  disabled={!selectedTeacherByClass[cls.id] || !!assigningByClass[cls.id]}
+                >
+                  {assigningByClass[cls.id] ? "Assigning..." : "Assign Principale"}
                 </button>
               </div>
             </div>
@@ -191,7 +310,39 @@ export default function ClassesPage() {
                 maxLength={2}
               />
             </div>
-            <small>Example: "7eme secondaire" + "A" = "7eme secondaire A"</small>
+            {requiresSecondaryOption && (
+              <div className="form-group">
+                <label>Option (1ère à 3ème secondaire) *</label>
+                <select
+                  value={secondaryOption}
+                  onChange={(e) => {
+                    setSecondaryOption(e.target.value);
+                    if (e.target.value !== "Autre...") setCustomSecondaryOption("");
+                  }}
+                  className="full-width"
+                >
+                  <option value="">Sélectionner une option</option>
+                  {SECONDARY_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+                {secondaryOption === "Autre..." && (
+                  <input
+                    type="text"
+                    value={customSecondaryOption}
+                    onChange={(e) => setCustomSecondaryOption(e.target.value)}
+                    placeholder="Ex: Math-Info, Biochimie, etc."
+                    className="full-width"
+                    style={{ marginTop: 8 }}
+                  />
+                )}
+              </div>
+            )}
+            <small>
+              {requiresSecondaryOption
+                ? 'Exemple: "2eme secondaire" + "Pédagogie" + "A" = "2eme secondaire Pédagogie A"'
+                : 'Example: "7eme secondaire" + "A" = "7eme secondaire A"'}
+            </small>
             <div className="form-actions">
               <button className="btn-cancel" onClick={() => setShowCreateModal(false)}>
                 Cancel
@@ -199,7 +350,7 @@ export default function ClassesPage() {
               <button 
                 className="btn-save" 
                 onClick={handleCreate}
-                disabled={!selectedBaseClass || !classSuffix || creating}
+                disabled={!selectedBaseClass || !classSuffix || (requiresSecondaryOption && !effectiveSecondaryOption) || creating}
               >
                 {creating ? '⏳' : <FaPlus />}
                 {creating ? "Creating..." : "Create Class"}
@@ -211,4 +362,3 @@ export default function ClassesPage() {
     </div>
   );
 }
-

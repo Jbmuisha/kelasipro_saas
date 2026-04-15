@@ -84,14 +84,25 @@ def login():
         return jsonify({"message": "Erreur de vérification du mot de passe."}), 500
 
     # Generate JWT token
-    # For TEACHER role, ALWAYS use school.school_type (not user.admin_level)
-    school_type = user.get('admin_level') or user.get('school_type')
-    if role == "TEACHER" and user.get("school_id"):
+    # Resolve school_type deterministically to avoid stale/wrong level across sessions.
+    # Priority:
+    # 1) schools.school_type from school_id (source of truth)
+    # 2) SCHOOL_ADMIN.admin_level
+    # 3) users.school_type fallback
+    school_type = None
+
+    if user.get("school_id"):
         with get_connection().cursor() as cursor:
             cursor.execute("SELECT school_type FROM schools WHERE id = %s", (user["school_id"],))
             school_row = cursor.fetchone()
-            if school_row:
-                school_type = school_row['school_type'] or None
+            if school_row and school_row.get('school_type'):
+                school_type = school_row['school_type']
+
+    if not school_type and role == "SCHOOL_ADMIN":
+        school_type = user.get('admin_level')
+
+    if not school_type:
+        school_type = user.get('school_type')
 
     if not school_type and role != "SUPER_ADMIN":
         school_type = 'primaire'
@@ -111,6 +122,9 @@ def login():
 
     # Fetch children for PARENT users
     safe_user = serialize_user(user)
+    # Ensure frontend receives the resolved effective school_type used in JWT,
+    # so UI level selection remains correct across mixed school logins.
+    safe_user["school_type"] = school_type
     if role == "PARENT":
         try:
             conn2 = get_connection()

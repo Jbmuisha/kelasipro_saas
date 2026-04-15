@@ -85,7 +85,7 @@ def create_course():
     """
     try:
         requester = get_requester_from_auth()
-        if not requester or requester.get('role') != 'SCHOOL_ADMIN':
+        if not requester:
             return jsonify({'error': 'Unauthorized'}), 403
 
         data = request.get_json() or {}
@@ -99,6 +99,11 @@ def create_course():
             return jsonify({'error': 'school_id is required'}), 400
         if not name:
             return jsonify({'error': 'Course name required'}), 400
+
+        # Keep write permissions strict: only admins can create courses.
+        requester_role = requester.get('role')
+        if requester_role not in ('SCHOOL_ADMIN', 'SUPER_ADMIN'):
+            return jsonify({'error': 'Unauthorized'}), 403
 
         # If teacher_id provided, validate it belongs to same school and is TEACHER
         if teacher_id:

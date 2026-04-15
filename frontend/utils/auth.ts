@@ -43,6 +43,9 @@ export const useAuth = () => {
     localStorage.removeItem("user");
     localStorage.removeItem("school_id");
     localStorage.removeItem("school_type");
+    localStorage.removeItem("impersonation");
+    localStorage.removeItem("admin_token_backup");
+    localStorage.removeItem("admin_user_backup");
     setUser(null);
   }, []);
 
@@ -64,7 +67,25 @@ export const useEffectiveUser = () => {
 };
 
 export const clearImpersonation = () => {
-  localStorage.removeItem("impersonation");
+  const impersonation = localStorage.getItem('impersonation');
+  const backupToken = localStorage.getItem('admin_token_backup');
+  const backupUser = localStorage.getItem('admin_user_backup');
+
+  if (impersonation && backupToken && backupUser) {
+    try {
+      const adminUser = JSON.parse(backupUser);
+      localStorage.setItem('token', backupToken);
+      localStorage.setItem('user', backupUser);
+      localStorage.setItem('school_id', String(adminUser?.school_id || 0));
+      localStorage.setItem('school_type', adminUser?.school_type || 'primaire');
+    } catch {
+      // ignore parse errors and just clear backups below
+    }
+  }
+
+  localStorage.removeItem('impersonation');
+  localStorage.removeItem('admin_token_backup');
+  localStorage.removeItem('admin_user_backup');
 };
 
 export const setImpersonation = async (teacherData: { id: number; role: string | undefined; schoolType?: string }) => {
@@ -72,8 +93,16 @@ export const setImpersonation = async (teacherData: { id: number; role: string |
     const token = localStorage.getItem('token');
     if (!token) throw new Error('No admin token');
 
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-    const res = await fetch(`${API_URL}/api/admin/impersonate/${teacherData.id}`, {
+    // Save admin session before replacing it with impersonated session.
+    if (!localStorage.getItem('admin_token_backup')) {
+      localStorage.setItem('admin_token_backup', token);
+    }
+    const currentUser = localStorage.getItem('user');
+    if (currentUser && !localStorage.getItem('admin_user_backup')) {
+      localStorage.setItem('admin_user_backup', currentUser);
+    }
+
+    const res = await fetch(`/api/auth/admin/impersonate/${teacherData.id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     });
@@ -86,6 +115,7 @@ export const setImpersonation = async (teacherData: { id: number; role: string |
     const data = await res.json();
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
+    localStorage.setItem('impersonation', JSON.stringify({ teacher_id: teacherData.id }));
     localStorage.setItem('school_id', String(data.user.school_id || 0));
     localStorage.setItem('school_type', data.user.school_type || 'primaire');
 
@@ -96,4 +126,3 @@ export const setImpersonation = async (teacherData: { id: number; role: string |
     console.error(err);
   }
 };
-

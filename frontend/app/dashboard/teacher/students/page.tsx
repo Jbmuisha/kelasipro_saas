@@ -2,8 +2,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useEffectiveUser } from "@/utils/auth";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-
 type StudentRow = {
   id: number;
   name: string;
@@ -28,7 +26,7 @@ export default function TeacherStudentsPage() {
     if (effectiveLoading || !effectiveUser?.id || !effectiveUser?.school_id) return;
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/api/classes?school_id=${effectiveUser.school_id || 0}`, {
+      const res = await fetch(`/api/classes?school_id=${effectiveUser.school_id || 0}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Failed to load classes");
@@ -52,7 +50,7 @@ export default function TeacherStudentsPage() {
     setLoading(true); setError(null);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/api/users/?school_id=${effectiveUser.school_id}`, {
+      const res = await fetch(`/api/users?school_id=${effectiveUser.school_id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Failed to load students");

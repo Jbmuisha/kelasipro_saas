@@ -112,6 +112,23 @@ def create_teacher():
         # create user
         new_user = User.create(name=name, email=email, password=password, role=role, school_id=school_id, created_by=requester['id'])
 
+        # Keep school_type aligned so school-scoped filters can still see this teacher.
+        # Some list endpoints filter by requester school_type.
+        try:
+            if school and getattr(school, 'school_type', None):
+                conn = get_connection()
+                with conn.cursor() as cursor:
+                    cursor.execute("SHOW COLUMNS FROM users LIKE 'school_type'")
+                    if cursor.fetchone():
+                        cursor.execute(
+                            "UPDATE users SET school_type=%s WHERE id=%s",
+                            (school.school_type, new_user.id),
+                        )
+                        conn.commit()
+        except Exception:
+            # Non-fatal; keep user creation successful even if this backfill step fails.
+            pass
+
         # persist teacher-class links if provided (class_ids)
         class_ids = data.get('class_ids') or []
         if class_ids and role == 'TEACHER':

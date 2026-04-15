@@ -114,8 +114,8 @@ export default function TeacherGradesPage() {
   const [savingConfig, setSavingConfig] = useState(false);
 
   // Grade config for dynamic periods
-const schoolType = localStorage.getItem('school_type') || 'primaire';
-  const [gradeConfig, setGradeConfig]
+  const [gradeConfig, setGradeConfig] = useState<{ periods: string[] } | null>(null);
+  const schoolType = localStorage.getItem('school_type') || 'primaire';
 
   // Find teacher's class - FIXED: use effectiveUser, useCallback
   const fetchData = useCallback(async () => {
@@ -526,4 +526,3 @@ const schoolType = localStorage.getItem('school_type') || 'primaire';
     </div>
   );
 }
-

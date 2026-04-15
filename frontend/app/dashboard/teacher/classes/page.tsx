@@ -2,8 +2,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-
 type ClassInfo = {
   id: number;
   name: string;
@@ -30,7 +28,7 @@ export default function TeacherClassesPage() {
       const token = localStorage.getItem("token");
 
       // Fetch classes
-      const classRes = await fetch(`${API_URL}/api/classes/?school_id=${currentUser.school_id}`, {
+      const classRes = await fetch(`/api/classes?school_id=${currentUser.school_id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!classRes.ok) throw new Error("Failed to load classes");
@@ -44,7 +42,7 @@ export default function TeacherClassesPage() {
       }
 
       // Count students in this class
-      const usersRes = await fetch(`${API_URL}/api/users/?school_id=${currentUser.school_id}`, {
+      const usersRes = await fetch(`/api/users?school_id=${currentUser.school_id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       let studentCount = 0;

@@ -183,6 +183,12 @@ def create_class():
         if effective_level in ('secondary',):
             effective_level = 'secondaire'
 
+        # For non-mixed admins, verify they can only manage their assigned level
+        admin_level = (requester.admin_level or '').strip().lower() if requester else ''
+        if admin_level not in ('', 'mixed', 'mixte'):
+            if effective_level != admin_level:
+                return jsonify({"error": f"Access denied. You are assigned to manage {admin_level} only."}), 403
+
         allowed = get_allowed_class_names(effective_level)
         if not allowed:
             return jsonify({"error": "School type not set or invalid"}), 400
@@ -203,7 +209,8 @@ def create_class():
                         valid = True
                         break
                     # allow suffix patterns: optional leading separators then letters/numbers/spaces/hyphens
-                    if re.match(r'^[\s\-–—]*[a-z0-9][a-z0-9\s\-–—]*$', suffix):
+                    # include accented latin chars (e.g. "Littéraire", "Pédagogie")
+                    if re.match(r'^[\s\-–—]*[a-z0-9à-ÿ][a-z0-9à-ÿ\s\-–—]*$', suffix):
                         valid = True
                         break
 

@@ -458,6 +458,8 @@ def get_allowed_class_names(school_type):
     if not school_type:
         return []
     st = school_type.strip().lower()
+    if st in ('mixed', 'mixte'):
+        return [*MATERNELLE_CLASSES, *PRIMAIRE_CLASSES, *SECONDAIRE_CLASSES]
     if st in ('primaire',):
         return PRIMAIRE_CLASSES
     if st in ('secondaire', 'secondary'):

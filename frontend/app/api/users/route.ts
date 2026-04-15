@@ -5,37 +5,13 @@ const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL |
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const school_id = searchParams.get('school_id') || '';
-  const level = searchParams.get('level') || '';
 
-  let url = `${BACKEND_URL}/api/classes?school_id=${school_id}`;
-  if (level) url += `&level=${encodeURIComponent(level)}`;
+  const url = `${BACKEND_URL}/api/users/?school_id=${encodeURIComponent(school_id)}`;
 
   try {
     const authHeader = request.headers.get('authorization') || '';
     const res = await fetch(url, {
       headers: authHeader ? { Authorization: authHeader } : {},
-    });
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
-  } catch (e: any) {
-    return NextResponse.json({ error: 'Backend unreachable', detail: e.message, url }, { status: 502 });
-  }
-}
-
-export async function POST(request: NextRequest) {
-  const url = `${BACKEND_URL}/api/classes`;
-
-  try {
-    const authHeader = request.headers.get('authorization') || '';
-    const body = await request.text();
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(authHeader ? { Authorization: authHeader } : {}),
-      },
-      body,
     });
 
     const text = await res.text();

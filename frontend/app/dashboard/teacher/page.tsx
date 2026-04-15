@@ -3,8 +3,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useEffectiveUser } from "@/utils/auth";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-
 export default function TeacherDashboard() {
   const [effectiveUser, effectiveLoading] = useEffectiveUser();
   const [className, setClassName] = useState("");
@@ -23,7 +21,7 @@ export default function TeacherDashboard() {
     const fetchData = async () => {
       try {
         const token = localStorage.getItem("token");
-        const classRes = await fetch(`${API_URL}/api/classes?school_id=${effectiveUser.school_id || 0}`, {
+        const classRes = await fetch(`/api/classes?school_id=${effectiveUser.school_id || 0}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (classRes.ok) {
@@ -31,7 +29,7 @@ export default function TeacherDashboard() {
           const cls = (cd.classes || []).find((c: any) => c.main_teacher_id === effectiveUser.id);
           if (cls) {
             setClassName(cls.name);
-            const usersRes = await fetch(`${API_URL}/api/users/?school_id=${effectiveUser.school_id}`, {
+            const usersRes = await fetch(`/api/users/?school_id=${effectiveUser.school_id}`, {
               headers: { Authorization: `Bearer ${token}` },
             });
             if (usersRes.ok) {

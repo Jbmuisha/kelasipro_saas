@@ -10,7 +10,13 @@ function getAuthToken(): string | null {
 // Fetch wrapper with auth header
 export async function apiFetch(endpoint: string, options: RequestInit = {}): Promise<Response> {
   const token = getAuthToken();
-  const url = `${API_URL}${endpoint}`;
+  const normalizedEndpoint = endpoint.startsWith('/api')
+    ? endpoint
+    : `/api${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  // Browser should use same-origin Next.js API routes to avoid cross-host/network issues.
+  // Server-side can still use direct backend URL.
+  const isBrowser = typeof window !== 'undefined';
+  const url = isBrowser ? normalizedEndpoint : `${API_URL}${normalizedEndpoint}`;
   
   const config: RequestInit = {
     ...options,
@@ -69,4 +75,3 @@ export async function apiDelete(endpoint: string): Promise<void> {
     throw new Error(err || `HTTP ${res.status}`);
   }
 }
-
