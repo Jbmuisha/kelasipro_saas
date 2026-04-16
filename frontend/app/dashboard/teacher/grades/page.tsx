@@ -353,7 +353,7 @@ export default function TeacherGradesPage() {
 
   // ===================== SAVE GRADE CONFIG =====================
   const handleSaveGradeConfig = async () => {
-    setSavingGradeConfig(true);
+    setSavingConfig(true);
     setError(null);
     try {
       const token = localStorage.getItem("token");
