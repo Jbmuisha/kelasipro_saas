@@ -55,6 +55,8 @@ def ensure_grades_tables():
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 school_id INT NOT NULL,
                 pass_percentage DECIMAL(5,2) DEFAULT 50.00,
+                repech_percentage DECIMAL(5,2) DEFAULT 45.00,
+                double_percentage DECIMAL(5,2) DEFAULT 55.00,
                 interro_weight DECIMAL(5,2) DEFAULT 50.00,
                 devoir_weight DECIMAL(5,2) DEFAULT 50.00,
                 examen_weight DECIMAL(5,2) DEFAULT 0.00,
@@ -65,6 +67,15 @@ def ensure_grades_tables():
                 INDEX (school_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         """)
+
+        # Add new columns if they don't exist
+        cursor.execute("SHOW COLUMNS FROM grade_configs LIKE 'repech_percentage'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE grade_configs ADD COLUMN repech_percentage DECIMAL(5,2) DEFAULT 45.00 AFTER pass_percentage")
+        
+        cursor.execute("SHOW COLUMNS FROM grade_configs LIKE 'double_percentage'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE grade_configs ADD COLUMN double_percentage DECIMAL(5,2) DEFAULT 55.00 AFTER repech_percentage")
 
         # Course configurations (coefficient and max score per course per class)
         cursor.execute("""
@@ -148,6 +159,8 @@ def get_grade_config():
                     'school_id': int(school_id),
                     'school_type': school_type,
                     'pass_percentage': 50.00,
+                    'repech_percentage': 45.00,
+                    'double_percentage': 55.00,
                     'interro_weight': 50.00,
                     'devoir_weight': 50.00,
                     'examen_weight': 0.00,
@@ -181,6 +194,8 @@ def update_grade_config():
             return jsonify({'error': 'school_id required'}), 400
 
         pass_pct = data.get('pass_percentage', 50.00)
+        repech_pct = data.get('repech_percentage', 45.00)
+        double_pct = data.get('double_percentage', 55.00)
         interro_w = data.get('interro_weight', 50.00)
         devoir_w = data.get('devoir_weight', 50.00)
         examen_w = data.get('examen_weight', 0.00)
@@ -190,15 +205,17 @@ def update_grade_config():
         conn = get_connection()
         with conn.cursor() as cursor:
             cursor.execute("""
-                INSERT INTO grade_configs (school_id, pass_percentage, interro_weight, devoir_weight, examen_weight, max_periods)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO grade_configs (school_id, pass_percentage, repech_percentage, double_percentage, interro_weight, devoir_weight, examen_weight, max_periods)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     pass_percentage=VALUES(pass_percentage),
+                    repech_percentage=VALUES(repech_percentage),
+                    double_percentage=VALUES(double_percentage),
                     interro_weight=VALUES(interro_weight),
                     devoir_weight=VALUES(devoir_weight),
                     examen_weight=VALUES(examen_weight),
                     max_periods=VALUES(max_periods)
-            """, (school_id, pass_pct, interro_w, devoir_w, examen_w, max_periods))
+            """, (school_id, pass_pct, repech_pct, double_pct, interro_w, devoir_w, examen_w, max_periods))
             conn.commit()
 
             cursor.execute("SELECT * FROM grade_configs WHERE school_id=%s", (school_id,))
@@ -776,6 +793,11 @@ def get_bulletin():
                 percentage = round((total_obtained / total_possible) * 100, 2) if total_possible > 0 else 0
                 mention = get_mention(percentage)
                 passed = percentage >= pass_pct
+                
+                # Get repech and double thresholds from config
+                repech_pct = float(config.get('repech_percentage', 45.00))
+                double_pct = float(config.get('double_percentage', 55.00))
+                decision = get_decision(percentage, pass_pct, repech_pct)
 
                 result = {
                     'student': student,
@@ -788,6 +810,9 @@ def get_bulletin():
                     'percentage': percentage,
                     'mention': mention,
                     'passed': passed,
+                    'decision': decision,
+                    'repech_percentage': repech_pct,
+                    'double_percentage': double_pct,
                     'pass_percentage': pass_pct,
                     'config': {
                         'interro_weight': float(config['interro_weight']),
@@ -891,6 +916,11 @@ def get_bulletin():
                 else:
                     annual_pct = 0
 
+                # Get decision thresholds from config
+                repech_pct = float(config.get('repech_percentage', 45.00))
+                double_pct = float(config.get('double_percentage', 55.00))
+                decision = get_decision(annual_pct, pass_pct, repech_pct)
+
                 result = {
                     'student': student,
                     'class': class_info,
@@ -899,6 +929,9 @@ def get_bulletin():
                     'annual_percentage': annual_pct,
                     'annual_mention': get_mention(annual_pct),
                     'passed': annual_pct >= pass_pct,
+                    'decision': decision,
+                    'repech_percentage': repech_pct,
+                    'double_percentage': double_pct,
                     'pass_percentage': pass_pct,
                 }
 
@@ -1033,6 +1066,12 @@ def get_class_summary():
                     total_possible += max_sc * coeff
 
                 percentage = round((total_obtained / total_possible) * 100, 2) if total_possible > 0 else 0
+                
+                # Get decision thresholds
+                repech_pct = float(config.get('repech_percentage', 45.00))
+                double_pct = float(config.get('double_percentage', 55.00))
+                decision = get_decision(percentage, pass_pct, repech_pct)
+                
                 student_results.append({
                     'student_id': student['id'],
                     'student_name': student['name'],
@@ -1042,6 +1081,7 @@ def get_class_summary():
                     'percentage': percentage,
                     'mention': get_mention(percentage),
                     'passed': percentage >= pass_pct,
+                    'decision': decision,
                 })
 
             # Sort by percentage descending and add rank
@@ -1075,3 +1115,24 @@ def get_mention(percentage):
         return "Suffisant"
     else:
         return "Insuffisant"
+
+def get_decision(percentage, pass_threshold=50, repêchage_threshold=45):
+    """
+    Return the decision based on percentage.
+    
+    Args:
+        percentage: The student's percentage
+        pass_threshold: Minimum percentage to pass (default 50)
+        repêchage_threshold: Minimum percentage for repêchage (default 45)
+    
+    Returns:
+        'Réussi' if percentage >= pass_threshold
+        'Repêchage' if pass_threshold > percentage >= repêinage_threshold  
+        'Échec' (Double) if percentage < repêinage_threshold
+    """
+    if percentage >= pass_threshold:
+        return "Réussi"
+    elif percentage >= repêchage_threshold:
+        return "Repêchage"
+    else:
+        return "Échec"

@@ -77,7 +77,7 @@ def update_user(user_id):
     requester = get_requester_from_auth()
     if not requester:
         return jsonify({"error": "Unauthorized - invalid/missing token"}), 401
-    if requester['role'] not in ('SCHOOL_ADMIN', 'SUPER_ADMIN'):
+    if requester['role'] not in ('SCHOOL_ADMIN', 'SECRETARY', 'SUPER_ADMIN'):
         return jsonify({"error": "Unauthorized - insufficient permissions"}), 403
 
     data = request.json
@@ -86,10 +86,10 @@ def update_user(user_id):
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        # SCHOOL_ADMIN can't demote other admins or change their school
-        if requester['role'] == 'SCHOOL_ADMIN' and user.role in ('SCHOOL_ADMIN', 'SUPER_ADMIN') and requester['id'] != user.id:
+        # SCHOOL_ADMIN and SECRETARY can't demote other admins or change their school
+        if requester['role'] in ('SCHOOL_ADMIN', 'SECRETARY') and user.role in ('SCHOOL_ADMIN', 'SUPER_ADMIN') and requester['id'] != user.id:
             if data.get('role') or data.get('school_id') or data.get('admin_level'):
-                return jsonify({"error": "School admin cannot modify other admin accounts"}), 403
+                return jsonify({"error": "Admin cannot modify other admin accounts"}), 403
 
         # Log the change
         old_role = user.role

@@ -48,12 +48,18 @@ def assign_teacher_to_class(class_id):
         return jsonify({"error": "teacher_id and created_by are required"}), 400
 
     try:
-        # Verify requester
-        requester = User.get_by_id(created_by)
+        # Debug: print what's being passed
+        print(f"[DEBUG assign_teacher] created_by={created_by}, teacher_id={teacher_id}")
+        
+        # Verify requester - don't use school_type filter for admin lookup
+        requester = User.get_by_id(created_by, requester_school_type=None, requester_role=None)
+        print(f"[DEBUG assign_teacher] requester={requester}")
+        
         if not requester:
             return jsonify({"error": "Requester not found"}), 404
-        if requester.role != 'SCHOOL_ADMIN':
-            return jsonify({"error": "Only SCHOOL_ADMIN can assign teachers"}), 403
+        # Allow both SCHOOL_ADMIN and SECRETARY to assign teachers
+        if requester.role not in ('SCHOOL_ADMIN', 'SECRETARY'):
+            return jsonify({"error": f"Only SCHOOL_ADMIN or SECRETARY can assign teachers. Current role: {requester.role}, user_id: {created_by}"}), 403
 
         # Verify class
         from db import get_connection

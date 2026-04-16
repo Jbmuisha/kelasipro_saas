@@ -18,6 +18,8 @@ type CourseItem = {
 
 type GradeConfig = {
   pass_percentage: number;
+  repech_percentage: number;
+  double_percentage: number;
   interro_weight: number;
   devoir_weight: number;
   examen_weight: number;
@@ -45,6 +47,8 @@ export default function SchoolGradesPage() {
   // Config
   const [config, setConfig] = useState<GradeConfig>({
     pass_percentage: 50,
+    repech_percentage: 45,
+    double_percentage: 55,
     interro_weight: 50,
     devoir_weight: 50,
     examen_weight: 0,
@@ -351,6 +355,36 @@ export default function SchoolGradesPage() {
                   style={inputStyle}
                 />
                 <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>Seuil minimum pour réussir (ex: 50%)</p>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
+                  Seuil Repêotage (%)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={config.repech_percentage}
+                  onChange={(e) => setConfig({ ...config, repech_percentage: Number(e.target.value) })}
+                  style={inputStyle}
+                />
+                <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>Minimum pour repêotage (ex: 45%)</p>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
+                  Seuil Double (%)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={config.double_percentage}
+                  onChange={(e) => setConfig({ ...config, double_percentage: Number(e.target.value) })}
+                  style={inputStyle}
+                />
+                <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>Au-dessus de ce seuil = double (ex: 55%)</p>
               </div>
 
               <div>
