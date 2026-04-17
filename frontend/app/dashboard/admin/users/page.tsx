@@ -38,6 +38,7 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [formData, setFormData] = useState<User>({
     id: "",
     name: "",
@@ -286,6 +287,15 @@ export default function AdminUsersPage() {
   };
 
   useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        setCurrentUser(user);
+      } catch (e) {
+        console.error('Failed to parse user from localStorage', e);
+      }
+    }
     fetchUsers();
     fetchSchools();
   }, []);
@@ -458,11 +468,17 @@ export default function AdminUsersPage() {
                     }
                   }}
                 >
-                  <option value="SUPER_ADMIN">Super Admin</option>
-                  <option value="SCHOOL_ADMIN">School Admin</option>
                   <option value="TEACHER">Teacher</option>
+                  <option value="SECRETARY">Secretary</option>
+                  <option value="ASSISTANT">Assistant</option>
+                  {currentUser?.role === 'SUPER_ADMIN' && (
+                    <>
+                      <option value="SCHOOL_ADMIN">School Admin</option>
+                      <option value="SUPER_ADMIN">Super Admin</option>
+                    </>
+                  )}
                   <option value="STUDENT">Student</option>
-                  <option value="PARENT"> Parent</option>
+                  <option value="PARENT">Parent</option>
                 </select>
               </div>
 

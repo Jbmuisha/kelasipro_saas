@@ -47,7 +47,7 @@ def ensure_messages_table():
         conn.close()
         _tables_ensured = True
     except Exception:
-        # If table creation fails, we'll try again next request
+        # If table creation fails,i think 'll try again next request
         traceback.print_exc()
 
 

@@ -39,15 +39,33 @@ def get_user(user_id):
 # ================= CREATE USER =================
 @users_bp.route("/", methods=["POST"])
 def create_user():
+    from .auth import get_requester_from_auth
+    requester = get_requester_from_auth()
+    if not requester:
+        return jsonify({"error": "Unauthorized - invalid/missing token"}), 401
+    
     data = request.json
     try:
         requester_id = data.get("requester_id")
+        requested_role = data.get("role", "TEACHER")
+        
+        # Validate role based on requester's permissions
+        if requester['role'] == 'SUPER_ADMIN':
+            # Super admin can create any role
+            allowed_roles = ['TEACHER', 'STUDENT', 'PARENT', 'SECRETARY', 'ASSISTANT', 'SCHOOL_ADMIN', 'SUPER_ADMIN']
+        else:
+            # School admin and secretary can only create TEACHER, ASSISTANT, SECRETARY
+            allowed_roles = ['TEACHER', 'ASSISTANT', 'SECRETARY']
+            
+        if requested_role not in allowed_roles:
+            return jsonify({"error": f"You do not have permission to create users with role: {requested_role}"}), 403
+        
         # Get school_type from school_id
         user = User.create(
             name=data.get("name"),
             email=data.get("email"),
             password=data.get("password"),
-            role=data.get("role", "TEACHER"),
+            role=requested_role,
             school_id=data.get("school_id"),
             class_id=data.get("class_id"),
             created_by=requester_id,
@@ -90,6 +108,15 @@ def update_user(user_id):
         if requester['role'] in ('SCHOOL_ADMIN', 'SECRETARY') and user.role in ('SCHOOL_ADMIN', 'SUPER_ADMIN') and requester['id'] != user.id:
             if data.get('role') or data.get('school_id') or data.get('admin_level'):
                 return jsonify({"error": "Admin cannot modify other admin accounts"}), 403
+
+        # Only SUPER_ADMIN can change user roles
+        if 'role' in data and data['role'] != user.role:
+            if requester['role'] != 'SUPER_ADMIN':
+                return jsonify({"error": "Only super admins can change user roles"}), 403
+            # Validate role value
+            allowed_roles = ['TEACHER', 'STUDENT', 'PARENT', 'SECRETARY', 'ASSISTANT', 'SCHOOL_ADMIN', 'SUPER_ADMIN']
+            if data['role'] not in allowed_roles:
+                return jsonify({"error": f"Invalid role. Must be one of: {', '.join(allowed_roles)}"}), 400
 
         # Log the change
         old_role = user.role

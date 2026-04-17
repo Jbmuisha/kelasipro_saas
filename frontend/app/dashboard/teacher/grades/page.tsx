@@ -85,6 +85,8 @@ export default function TeacherGradesPage() {
   // Grade entry state
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState(1);
+  const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
+  const [submittingBulletin, setSubmittingBulletin] = useState(false);
   const [gradeType, setGradeType] = useState<"interro" | "devoir" | "examen">("interro");
   const [maxScore, setMaxScore] = useState(10);
   const [gradeDescription, setGradeDescription] = useState("");
@@ -125,8 +127,55 @@ export default function TeacherGradesPage() {
   });
 
   // Grade config for dynamic periods
-  const [gradeConfig, setGradeConfig] = useState<{ periods: string[] } | null>(null);
+  const [gradeConfig, setGradeConfig] = useState<{ periods: string[], max_periods: number, school_type?: string } | null>(null);
   const [schoolType, setSchoolType] = useState('primaire');
+
+  // Period selection is now handled by getPeriods() based on max_periods config
+
+  // Get periods for primary: 3 trimesters x 3 sub-periods = 9 total
+  const getPrimaryPeriods = () => {
+    const periods: { value: number; label: string }[] = [];
+    for (let t = 1; t <= 3; t++) {
+      periods.push({ value: (t-1)*3 + 1, label: `T${t}-P${(t-1)*2 + 1}` });
+      periods.push({ value: (t-1)*3 + 2, label: `T${t}-P${(t-1)*2 + 2}` });
+      periods.push({ value: (t-1)*3 + 3, label: `T${t}-EXAMEN` });
+    }
+    return periods;
+  };
+
+  // Get dynamic periods based on config
+  const getPeriods = () => {
+    const type = gradeConfig?.school_type || schoolType;
+    if (type.toLowerCase().includes('secondaire') || type.toLowerCase().includes('secondary')) {
+      // Secondary: 2 semesters with 2 periods each = 4
+      const max = gradeConfig?.max_periods || 4;
+      return Array.from({ length: max }, (_, i) => ({ value: i + 1, label: `S${Math.ceil((i+1)/2)}-P${(i%2)+1}` }));
+    }
+    // Primary: 9 periods (3 trimesters x (P1 + P2 + EXAMEN))
+    return getPrimaryPeriods();
+  };
+
+  // Get period label - handles both object (from getPeriods) and number
+  const getPeriodLabel = (period: any) => {
+    // If it's an object with label property, use it
+    if (period && typeof period === 'object' && period.label) {
+      return period.label;
+    }
+    // Otherwise it's a number
+    const periodValue = Number(period);
+    const type = gradeConfig?.school_type || schoolType;
+    if (type.toLowerCase().includes('secondaire') || type.toLowerCase().includes('secondary')) {
+      // Secondary: 2 semesters with 2 periods each
+      const semester = periodValue <= 2 ? 1 : 2;
+      const periodInSemester = periodValue <= 2 ? periodValue : periodValue - 2;
+      return `S${semester}-P${periodInSemester}`;
+    }
+    // Primary: 9 periods (3 trimesters x (P1 + P2 + EXAMEN))
+    const t = Math.ceil(periodValue / 3);
+    const sub = ((periodValue - 1) % 3) + 1;
+    if (sub === 3) return `T${t}-EXAMEN`;
+    return `T${t}-P${(t-1)*2 + sub}`;
+  };
 
   // Initialize school type from localStorage (client-side only)
   useEffect(() => {
@@ -291,6 +340,40 @@ export default function TeacherGradesPage() {
     }
   };
 
+  // ===================== PUBLISH BULLETINS =====================
+  const handleSubmitBulletinTeacher = async () => {
+    if (!selectedClassId) {
+      setError("Veuillez sélectionner une classe");
+      return;
+    }
+    setSubmittingBulletin(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/grades/submit-class-bulletin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          class_id: selectedClassId,
+          period: selectedPeriod,
+          send_to_parent: true,
+          send_to_student: true,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccess(`✅ Bulletins publiés! ${data.messages_sent || 0} messages envoyés.`);
+      } else {
+        setError(data.error || "Erreur lors de la publication");
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSubmittingBulletin(false);
+    }
+  };
+
   // ===================== SEND GRADES TO PARENTS =====================
   const handleSendToParents = async () => {
     if (!selectedCourseId || !classId) return;
@@ -326,7 +409,7 @@ export default function TeacherGradesPage() {
         const message = `📊 ${gradeTypeLabel} - ${courseName}\n\n` +
           `Élève: ${student.name}\n` +
           `Note: ${grade.score}/${maxScore}\n` +
-          `Période: Trimestre ${selectedPeriod}\n` +
+          `Période: ${getPeriodLabel(selectedPeriod)}\n` +
           `Date: ${gradeDate}`;
         
         const res = await fetch("/api/messages/send", {
@@ -628,7 +711,9 @@ export default function TeacherGradesPage() {
         <button style={tabStyle(activeTab === "enter")} onClick={() => setActiveTab("enter")}>📝 Saisir Notes</button>
         <button style={tabStyle(activeTab === "view")} onClick={() => setActiveTab("view")}>📋 Voir Notes</button>
         <button style={tabStyle(activeTab === "bulletin")} onClick={() => setActiveTab("bulletin")}>📊 Bulletin</button>
-        <button style={tabStyle(activeTab === "semester")} onClick={() => setActiveTab("semester")}>📋 Semestre</button>
+        {schoolType && schoolType.toLowerCase().includes('secondaire') && (
+          <button style={tabStyle(activeTab === "semester")} onClick={() => setActiveTab("semester")}>📋 Semestre</button>
+        )}
         <button style={tabStyle(activeTab === "summary")} onClick={() => setActiveTab("summary")}>🏆 Classement</button>
         <button style={tabStyle(activeTab === "config")} onClick={() => setActiveTab("config")}>⚙️ Configuration</button>
       </div>
@@ -647,7 +732,7 @@ export default function TeacherGradesPage() {
                   onChange={(e) => setSelectedPeriod(Number(e.target.value))}
                   style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db' }}
                 >
-                  {[1,2,3].map(p => <option key={p} value={p}>Trimestre {p}</option>)}
+                  {getPeriods().map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
               </div>
               <div>
@@ -798,7 +883,7 @@ export default function TeacherGradesPage() {
                   onChange={(e) => setViewPeriod(Number(e.target.value))}
                   style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db' }}
                 >
-                  {[1,2,3].map(p => <option key={p} value={p}>Trimestre {p}</option>)}
+                  {getPeriods().map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
               </div>
               <div>
@@ -885,11 +970,78 @@ export default function TeacherGradesPage() {
       {activeTab === "bulletin" && (
         <div>
           <h3 style={{ marginBottom: 16 }}>📊 Bulletin trimestriel</h3>
-          <p style={{ color: '#6b7280', marginBottom: 20 }}>Générez et visualisez les bulletins des élèves.</p>
-          <div style={{ background: '#f0fdf4', padding: 24, borderRadius: 12, border: '1px solid #bbf7d0', textAlign: 'center' }}>
-            <p style={{ color: '#166534', fontWeight: 500 }}>📄 Module Bulletin</p>
-            <p style={{ color: '#6b7280', fontSize: 14 }}>Sélectionnez une classe et générez les bulletins.</p>
-          </div>
+          <p style={{ color: '#6b7280', marginBottom: 20 }}>Générez et envoyez les bulletins aux élèves et parents.</p>
+          
+          {!classId ? (
+            <div style={{ background: '#fef3c7', padding: 24, borderRadius: 12, border: '1px solid #fde68a', textAlign: 'center' }}>
+              <p style={{ color: '#92400e', fontWeight: 500 }}>⚠️ Veuillez d'abord sélectionner une classe dans l'onglet "📝 Saisir Notes"</p>
+            </div>
+          ) : (
+            <>
+              <div style={{ background: '#f9fafb', padding: 20, borderRadius: 12, marginBottom: 20 }}>
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ fontWeight: 600 }}>Classe actuelle: <span style={{ color: '#2563eb' }}>{className || classId}</span></p>
+                </div>
+                
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontWeight: 600 }}>Période</label>
+                    <select
+                      style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #d1d5db', minWidth: 180 }}
+                      value={selectedPeriod}
+                      onChange={(e) => setSelectedPeriod(Number(e.target.value))}
+                    >
+                      <optgroup label="Trimestre 1">
+                        <option value={1}>Période 1</option>
+                        <option value={2}>Période 2</option>
+                        <option value={3}>Examen T1</option>
+                      </optgroup>
+                      <optgroup label="Trimestre 2">
+                        <option value={4}>Période 4</option>
+                        <option value={5}>Période 5</option>
+                        <option value={6}>Examen T2</option>
+                      </optgroup>
+                      <optgroup label="Trimestre 3">
+                        <option value={7}>Période 7</option>
+                        <option value={8}>Période 8</option>
+                        <option value={9}>Examen T3</option>
+                      </optgroup>
+                    </select>
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button
+                    style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 24px', fontWeight: 700, cursor: 'pointer' }}
+                    onClick={handleSubmitBulletinTeacher}
+                    disabled={!classId || submittingBulletin}
+                  >
+                    {submittingBulletin ? 'Publication...' : '📤 Publier et Envoyer'}
+                  </button>
+                </div>
+                
+                {success && (
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', borderRadius: 8, padding: '12px 16px', marginTop: 16 }}>
+                    ✅ {success}
+                  </div>
+                )}
+                {error && (
+                  <div style={{ background: '#fee2e2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 8, padding: '12px 16px', marginTop: 16 }}>
+                    ❌ {error}
+                  </div>
+                )}
+              </div>
+              
+              <div style={{ background: '#f0fdf4', padding: 16, borderRadius: 12, border: '1px solid #bbf7d0' }}>
+                <p style={{ color: '#166534', fontWeight: 500, marginBottom: 8 }}>À propos des bulletins</p>
+                <ul style={{ color: '#6b7280', fontSize: 14, paddingLeft: 20, margin: 0 }}>
+                  <li>Les bulletins sont générés pour tous les élèves de la classe</li>
+                  <li>Chaque élève et son/ses parents reçoivent un message avec les résultats</li>
+                  <li>Le message inclut: moyenne, rang, mention et décision</li>
+                </ul>
+              </div>
+            </>
+          )}
         </div>
       )}
 
