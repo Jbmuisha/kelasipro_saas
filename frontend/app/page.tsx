@@ -1,12 +1,16 @@
 
-"use client";
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 
-export default function Home() {
-  return (
-    <main>
-      <h1>Welcome to Kelasipro</h1>
-      <p>Your app is running correctly.</p>
-    </main>
-  );
+export default async function Home({
+  searchParams
+}: {
+  searchParams: Promise<{
+    returnTo?: string | string[]
+  }>
+}) {
+  const resolvedSearchParams = await searchParams;
+  const returnTo = Array.isArray(resolvedSearchParams.returnTo) ? resolvedSearchParams.returnTo[0] : resolvedSearchParams.returnTo || '/login';
+  redirect(returnTo);
 }
 

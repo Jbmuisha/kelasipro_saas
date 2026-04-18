@@ -1,5 +1,6 @@
-"use client";
-import { useEffect, useState } from "react";
+ "use client";
+import { useEffect, useState, useCallback } from "react";
+import { useEffectiveUser } from "@/utils/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -68,7 +69,7 @@ type ClassSummaryStudent = {
 };
 
 export default function TeacherGradesPage() {
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [effectiveUser, effectiveLoading] = useEffectiveUser();
   const [classId, setClassId] = useState<number | null>(null);
   const [className, setClassName] = useState("");
   const [students, setStudents] = useState<Student[]>([]);
@@ -79,17 +80,20 @@ export default function TeacherGradesPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<"enter" | "view" | "bulletin" | "summary" | "config">("enter");
+  const [activeTab, setActiveTab] = useState<"enter" | "view" | "bulletin" | "summary" | "semester" | "config">("enter");
 
   // Grade entry state
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState(1);
+  const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
+  const [submittingBulletin, setSubmittingBulletin] = useState(false);
   const [gradeType, setGradeType] = useState<"interro" | "devoir" | "examen">("interro");
   const [maxScore, setMaxScore] = useState(10);
   const [gradeDescription, setGradeDescription] = useState("");
   const [gradeDate, setGradeDate] = useState(new Date().toISOString().split("T")[0]);
   const [studentScores, setStudentScores] = useState<Record<number, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [sending, setSending] = useState(false);
 
   // View grades state
   const [viewPeriod, setViewPeriod] = useState(1);
@@ -112,86 +116,159 @@ export default function TeacherGradesPage() {
   const [configCoefficients, setConfigCoefficients] = useState<Record<number, { coefficient: number; max_score: number }>>({});
   const [savingConfig, setSavingConfig] = useState(false);
 
+  // Grade config form state
+  const [gradeConfigForm, setGradeConfigForm] = useState({
+    interro_weight: 50,
+    devoir_weight: 50,
+    examen_weight: 0,
+    pass_percentage: 50,
+    repech_percentage: 45,
+    double_percentage: 55,
+  });
+
+  // Grade config for dynamic periods
+  const [gradeConfig, setGradeConfig] = useState<{ periods: string[], max_periods: number, school_type?: string } | null>(null);
+  const [schoolType, setSchoolType] = useState('primaire');
+
+  // Period selection is now handled by getPeriods() based on max_periods config
+
+  // Get periods for primary: 3 trimesters x 3 sub-periods = 9 total
+  const getPrimaryPeriods = () => {
+    const periods: { value: number; label: string }[] = [];
+    for (let t = 1; t <= 3; t++) {
+      periods.push({ value: (t-1)*3 + 1, label: `T${t}-P${(t-1)*2 + 1}` });
+      periods.push({ value: (t-1)*3 + 2, label: `T${t}-P${(t-1)*2 + 2}` });
+      periods.push({ value: (t-1)*3 + 3, label: `T${t}-EXAMEN` });
+    }
+    return periods;
+  };
+
+  // Get dynamic periods based on config
+  const getPeriods = () => {
+    const type = gradeConfig?.school_type || schoolType;
+    if (type.toLowerCase().includes('secondaire') || type.toLowerCase().includes('secondary')) {
+      // Secondary: 2 semesters with 2 periods each = 4
+      const max = gradeConfig?.max_periods || 4;
+      return Array.from({ length: max }, (_, i) => ({ value: i + 1, label: `S${Math.ceil((i+1)/2)}-P${(i%2)+1}` }));
+    }
+    // Primary: 9 periods (3 trimesters x (P1 + P2 + EXAMEN))
+    return getPrimaryPeriods();
+  };
+
+  // Get period label - handles both object (from getPeriods) and number
+  const getPeriodLabel = (period: any) => {
+    // If it's an object with label property, use it
+    if (period && typeof period === 'object' && period.label) {
+      return period.label;
+    }
+    // Otherwise it's a number
+    const periodValue = Number(period);
+    const type = gradeConfig?.school_type || schoolType;
+    if (type.toLowerCase().includes('secondaire') || type.toLowerCase().includes('secondary')) {
+      // Secondary: 2 semesters with 2 periods each
+      const semester = periodValue <= 2 ? 1 : 2;
+      const periodInSemester = periodValue <= 2 ? periodValue : periodValue - 2;
+      return `S${semester}-P${periodInSemester}`;
+    }
+    // Primary: 9 periods (3 trimesters x (P1 + P2 + EXAMEN))
+    const t = Math.ceil(periodValue / 3);
+    const sub = ((periodValue - 1) % 3) + 1;
+    if (sub === 3) return `T${t}-EXAMEN`;
+    return `T${t}-P${(t-1)*2 + sub}`;
+  };
+
+  // Initialize school type from localStorage (client-side only)
   useEffect(() => {
-    const userStr = localStorage.getItem("user");
-    if (userStr) setCurrentUser(JSON.parse(userStr));
+    if (typeof window !== 'undefined') {
+      setSchoolType(localStorage.getItem('school_type') || 'primaire');
+    }
   }, []);
 
-  // Find teacher's class
-  useEffect(() => {
-    if (!currentUser?.id || !currentUser?.school_id) {
+  // Find teacher's class - FIXED: use effectiveUser, useCallback
+  const fetchData = useCallback(async () => {
+    if (effectiveLoading || !effectiveUser?.id || !effectiveUser?.school_id) {
       setLoading(false);
       return;
     }
-    const fetchData = async () => {
-      try {
-        const token = localStorage.getItem("token");
+    try {
+      const token = localStorage.getItem("token");
 
-        // Get classes
-        const classRes = await fetch(`${API_URL}/api/classes/?school_id=${currentUser.school_id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!classRes.ok) throw new Error("Impossible de charger les classes");
-        const classData = await classRes.json();
-        const cls = (classData.classes || []).find((c: any) => c.main_teacher_id === currentUser.id);
+      // Get classes
+      const classRes = await fetch(`${API_URL}/api/classes/?school_id=${effectiveUser.school_id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!classRes.ok) throw new Error("Impossible de charger les classes");
+      const classData = await classRes.json();
+      const cls = (classData.classes || []).find((c: any) => c.main_teacher_id === effectiveUser.id);
 
-        if (!cls) {
-          setLoading(false);
-          return;
-        }
-
-        setClassId(cls.id);
-        setClassName(cls.name);
-
-        // Get students
-        const usersRes = await fetch(`${API_URL}/api/users/?school_id=${currentUser.school_id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (usersRes.ok) {
-          const ud = await usersRes.json();
-          const studentList = (ud.users || [])
-            .filter((u: any) => u.role === "STUDENT" && String(u.class_id) === String(cls.id))
-            .map((u: any) => ({ id: u.id, name: u.name, unique_id: u.unique_id || "" }))
-            .sort((a: Student, b: Student) => a.name.localeCompare(b.name));
-          setStudents(studentList);
-        }
-
-        // Get courses for this class
-        const coursesRes = await fetch(`/api/schools/${currentUser.school_id}/teacher-courses`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (coursesRes.ok) {
-          const cd = await coursesRes.json();
-          const allCourses = cd.courses || [];
-          // Filter courses that belong to this class
-          const classCourses = allCourses.filter((c: any) =>
-            (c.classes || []).some((cc: any) => cc.class_id === cls.id)
-          );
-          setCourses(classCourses);
-        }
-
-        // Get course configs
-        const configRes = await fetch(`/api/grades/course-config?class_id=${cls.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (configRes.ok) {
-          const cfgData = await configRes.json();
-          setCourseConfigs(cfgData.configs || []);
-          // Initialize config state
-          const cfgMap: Record<number, { coefficient: number; max_score: number }> = {};
-          for (const cfg of cfgData.configs || []) {
-            cfgMap[cfg.course_id] = { coefficient: cfg.coefficient, max_score: cfg.max_score };
-          }
-          setConfigCoefficients(cfgMap);
-        }
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
+      if (!cls) {
         setLoading(false);
+        return;
       }
-    };
+
+      setClassId(cls.id);
+      setClassName(cls.name);
+
+      // Get students
+      const usersRes = await fetch(`${API_URL}/api/users/?school_id=${effectiveUser.school_id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (usersRes.ok) {
+        const ud = await usersRes.json();
+        const studentList = (ud.users || [])
+          .filter((u: any) => u.role === "STUDENT" && String(u.class_id) === String(cls.id))
+          .map((u: any) => ({ id: u.id, name: u.name, unique_id: u.unique_id || "" }))
+          .sort((a: Student, b: Student) => a.name.localeCompare(b.name));
+        setStudents(studentList);
+      }
+
+      // Get courses for this class
+      const coursesRes = await fetch(`/api/schools/${effectiveUser.school_id}/teacher-courses`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (coursesRes.ok) {
+        const cd = await coursesRes.json();
+        const allCourses = cd.courses || [];
+        // Filter courses that belong to this class
+        const classCourses = allCourses.filter((c: any) =>
+          (c.classes || []).some((cc: any) => cc.class_id === cls.id)
+        );
+        setCourses(classCourses);
+      }
+
+      // Get course configs
+      const configRes = await fetch(`/api/grades/course-config?class_id=${cls.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (configRes.ok) {
+        const cfgData = await configRes.json();
+        setCourseConfigs(cfgData.configs || []);
+        // Initialize config state
+        const cfgMap: Record<number, { coefficient: number; max_score: number }> = {};
+        for (const cfg of cfgData.configs || []) {
+          cfgMap[cfg.course_id] = { coefficient: cfg.coefficient, max_score: cfg.max_score };
+        }
+        setConfigCoefficients(cfgMap);
+      }
+
+      // Get grade config for dynamic periods
+      const gradeRes = await fetch(`/api/grades/config?school_id=${effectiveUser.school_id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (gradeRes.ok) {
+        const gradeData = await gradeRes.json();
+        setGradeConfig(gradeData.config);
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [effectiveUser, effectiveLoading]);
+
+  useEffect(() => {
     fetchData();
-  }, [currentUser]);
+  }, [fetchData]);
 
   // Auto-clear messages
   useEffect(() => {
@@ -263,6 +340,134 @@ export default function TeacherGradesPage() {
     }
   };
 
+  // ===================== PUBLISH BULLETINS =====================
+  const handleSubmitBulletinTeacher = async () => {
+    if (!selectedClassId) {
+      setError("Veuillez sélectionner une classe");
+      return;
+    }
+    setSubmittingBulletin(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/grades/submit-class-bulletin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          class_id: selectedClassId,
+          period: selectedPeriod,
+          send_to_parent: true,
+          send_to_student: true,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccess(`✅ Bulletins publiés! ${data.messages_sent || 0} messages envoyés.`);
+      } else {
+        setError(data.error || "Erreur lors de la publication");
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSubmittingBulletin(false);
+    }
+  };
+
+  // ===================== SEND GRADES TO PARENTS =====================
+  const handleSendToParents = async () => {
+    if (!selectedCourseId || !classId) return;
+    
+    const grades = Object.entries(studentScores)
+      .filter(([, score]) => score !== "" && score !== undefined)
+      .map(([studentId, score]) => ({
+        student_id: Number(studentId),
+        score: parseFloat(score),
+      }));
+
+    if (grades.length === 0) {
+      setError("Aucune note à envoyer. Veuillez d'abord saisir les notes.");
+      return;
+    }
+
+    setSending(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem("token");
+      
+      // Get course name for the message
+      const course = courses.find(c => c.id === selectedCourseId);
+      const courseName = course?.name || "Cours";
+      const gradeTypeLabel = gradeType === "interro" ? "Interrogation" : gradeType === "devoir" ? "Devoir" : "Examen";
+      
+      // Send grades to each student/parent
+      let sentCount = 0;
+      for (const grade of grades) {
+        const student = students.find(s => s.id === grade.student_id);
+        if (!student) continue;
+        
+        const message = `📊 ${gradeTypeLabel} - ${courseName}\n\n` +
+          `Élève: ${student.name}\n` +
+          `Note: ${grade.score}/${maxScore}\n` +
+          `Période: ${getPeriodLabel(selectedPeriod)}\n` +
+          `Date: ${gradeDate}`;
+        
+        const res = await fetch("/api/messages/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            recipient_id: student.id,
+            message: message,
+          }),
+        });
+        
+        if (res.ok) {
+          sentCount++;
+        }
+      }
+      
+      setSuccess(`📤 ${sentCount} notification(s) de notes envoyée(s) aux élèves!`);
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de l'envoi des notifications");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // ===================== SAVE GRADE CONFIG =====================
+  const handleSaveGradeConfig = async () => {
+    setSavingConfig(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem("token");
+      const configData = {
+        interro_weight: parseFloat((document.querySelector('input[placeholder="Interrogation"]') as HTMLInputElement)?.value || '50'),
+        devoir_weight: parseFloat((document.querySelector('input[placeholder="Devoir"]') as HTMLInputElement)?.value || '50'),
+        examen_weight: parseFloat((document.querySelector('input[placeholder="Examen"]') as HTMLInputElement)?.value || '0'),
+        pass_percentage: parseFloat((document.querySelector('input[placeholder="Pass"]') as HTMLInputElement)?.value || '50'),
+        repech_percentage: parseFloat((document.querySelector('input[placeholder="Repêotage"]') as HTMLInputElement)?.value || '45'),
+        double_percentage: parseFloat((document.querySelector('input[placeholder="Double"]') as HTMLInputElement)?.value || '55'),
+      };
+      
+      const res = await fetch("/api/grades/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(configData),
+      });
+      
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error || "Erreur lors de la sauvegarde");
+      }
+      
+      setSuccess("✅ Configuration sauvegardée avec succès!");
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de la sauvegarde");
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
   // ===================== FETCH EXISTING GRADES =====================
   const fetchExistingGrades = async () => {
     if (!classId) return;
@@ -294,7 +499,7 @@ export default function TeacherGradesPage() {
     setBulletinData(null);
     try {
       const token = localStorage.getItem("token");
-      let url = `/api/grades/bulletin?student_id=${bulletinStudentId}&class_id=${classId}&school_id=${currentUser?.school_id}`;
+      let url = `/api/grades/bulletin?student_id=${bulletinStudentId}&class_id=${classId}&school_id=${effectiveUser?.school_id}`;
       if (bulletinPeriod) url += `&period=${bulletinPeriod}`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
@@ -315,10 +520,10 @@ export default function TeacherGradesPage() {
     setSummaryData(null);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(
-        `/api/grades/class-summary?class_id=${classId}&period=${summaryPeriod}&school_id=${currentUser?.school_id}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+        const res = await fetch(
+          `/api/grades/class-summary?class_id=${classId}&period=${summaryPeriod}&school_id=${effectiveUser?.school_id}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
       if (res.ok) {
         const data = await res.json();
         setSummaryData(data);
@@ -500,616 +705,441 @@ export default function TeacherGradesPage() {
         </div>
       )}
 
+
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, marginBottom: 20, overflowX: "auto", borderBottom: "1px solid #e5e7eb" }}>
         <button style={tabStyle(activeTab === "enter")} onClick={() => setActiveTab("enter")}>📝 Saisir Notes</button>
         <button style={tabStyle(activeTab === "view")} onClick={() => setActiveTab("view")}>📋 Voir Notes</button>
         <button style={tabStyle(activeTab === "bulletin")} onClick={() => setActiveTab("bulletin")}>📊 Bulletin</button>
+        {schoolType && schoolType.toLowerCase().includes('secondaire') && (
+          <button style={tabStyle(activeTab === "semester")} onClick={() => setActiveTab("semester")}>📋 Semestre</button>
+        )}
         <button style={tabStyle(activeTab === "summary")} onClick={() => setActiveTab("summary")}>🏆 Classement</button>
         <button style={tabStyle(activeTab === "config")} onClick={() => setActiveTab("config")}>⚙️ Configuration</button>
       </div>
 
-      {/* ===================== TAB: ENTER GRADES ===================== */}
+      {/* TAB CONTENT */}
       {activeTab === "enter" && (
         <div>
-          <div style={cardStyle}>
-            <h3 style={{ margin: "0 0 16px", fontSize: 16, color: "#111827" }}>Saisie des notes</h3>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginBottom: 16 }}>
+          <h3 style={{ marginBottom: 16 }}>📝 Saisir les notes</h3>
+          {/* Grade entry form */}
+          <div style={{ background: '#f9fafb', padding: 20, borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 16 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Période *</label>
-                <select style={selectStyle} value={selectedPeriod} onChange={(e) => setSelectedPeriod(Number(e.target.value))}>
-                  <option value={1}>1ère Période (T1)</option>
-                  <option value={2}>2ème Période (T2)</option>
-                  <option value={3}>3ème Période (T3)</option>
+                <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>Période</label>
+                <select 
+                  value={selectedPeriod} 
+                  onChange={(e) => setSelectedPeriod(Number(e.target.value))}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db' }}
+                >
+                  {getPeriods().map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
               </div>
-
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Cours *</label>
-                <select style={selectStyle} value={selectedCourseId ?? ""} onChange={(e) => setSelectedCourseId(e.target.value ? Number(e.target.value) : null)}>
-                  <option value="">-- Choisir un cours --</option>
-                  {courses.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
+                <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>Cours</label>
+                <select 
+                  value={selectedCourseId || ''} 
+                  onChange={(e) => setSelectedCourseId(Number(e.target.value))}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db' }}
+                >
+                  <option value="">Sélectionner un cours</option>
+                  {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Type *</label>
-                <select style={selectStyle} value={gradeType} onChange={(e) => setGradeType(e.target.value as any)}>
+                <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>Type de note</label>
+                <select 
+                  value={gradeType} 
+                  onChange={(e) => setGradeType(e.target.value as any)}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db' }}
+                >
                   <option value="interro">Interrogation</option>
                   <option value="devoir">Devoir</option>
                   <option value="examen">Examen</option>
                 </select>
               </div>
-
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Cote max /{maxScore}</label>
-                <input type="number" style={inputStyle} value={maxScore} min={1} max={100}
-                  onChange={(e) => setMaxScore(Number(e.target.value))} />
+                <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>Note sur</label>
+                <input 
+                  type="number" 
+                  value={maxScore} 
+                  onChange={(e) => setMaxScore(Number(e.target.value))}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db' }}
+                />
               </div>
-
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Date</label>
-                <input type="date" style={inputStyle} value={gradeDate} onChange={(e) => setGradeDate(e.target.value)} />
+                <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>Description</label>
+                <input 
+                  type="text" 
+                  value={gradeDescription} 
+                  onChange={(e) => setGradeDescription(e.target.value)}
+                  placeholder="Ex: Chapitre 3"
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db' }}
+                />
               </div>
-
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Description</label>
-                <input type="text" style={inputStyle} value={gradeDescription} placeholder="Ex: Interro chapitre 3"
-                  onChange={(e) => setGradeDescription(e.target.value)} />
+                <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>Date</label>
+                <input 
+                  type="date" 
+                  value={gradeDate} 
+                  onChange={(e) => setGradeDate(e.target.value)}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db' }}
+                />
               </div>
             </div>
           </div>
 
-          {/* Student scores table */}
-          {selectedCourseId && (
-            <div style={cardStyle}>
-              <h3 style={{ margin: "0 0 12px", fontSize: 15, color: "#111827" }}>
-                Notes des élèves — {courses.find((c) => c.id === selectedCourseId)?.name} — {gradeType === "interro" ? "Interrogation" : gradeType === "devoir" ? "Devoir" : "Examen"} /{maxScore}
-              </h3>
-
+          {/* Student scores */}
+          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600 }}>Élèves ({students.length})</span>
+              <button 
+                onClick={handleSubmitGrades}
+                disabled={submitting || !selectedCourseId}
+                style={{ 
+                  padding: '8px 16px', 
+                  background: submitting || !selectedCourseId ? '#9ca3af' : '#10b981', 
+                  color: '#fff', 
+                  border: 'none', 
+                  borderRadius: 8, 
+                  cursor: submitting || !selectedCourseId ? 'not-allowed' : 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                {submitting ? 'Enregistrement...' : '💾 Enregistrer'}
+              </button>
+              <button 
+                onClick={handleSendToParents}
+                disabled={sending || !selectedCourseId}
+                style={{ 
+                  padding: '8px 16px', 
+                  background: sending || !selectedCourseId ? '#9ca3af' : '#3b82f6', 
+                  color: '#fff', 
+                  border: 'none', 
+                  borderRadius: 8, 
+                  cursor: sending || !selectedCourseId ? 'not-allowed' : 'pointer',
+                  fontWeight: 600,
+                  marginLeft: 8
+                }}
+              >
+                {sending ? 'Envoi...' : '📤 Envoyer aux parents'}
+              </button>
+            </div>
+            <div style={{ maxHeight: 400, overflowY: 'auto' }}>
               {students.length === 0 ? (
-                <p style={{ color: "#9ca3af", fontSize: 13 }}>Aucun élève dans cette classe.</p>
+                <p style={{ padding: 20, color: '#6b7280', textAlign: 'center' }}>Aucun élève dans cette classe</p>
               ) : (
-                <>
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                      <thead>
-                        <tr style={{ background: "#f9fafb" }}>
-                          <th style={{ padding: "10px 12px", textAlign: "left", borderBottom: "2px solid #e5e7eb", fontWeight: 700, color: "#374151" }}>#</th>
-                          <th style={{ padding: "10px 12px", textAlign: "left", borderBottom: "2px solid #e5e7eb", fontWeight: 700, color: "#374151" }}>Nom de l&apos;élève</th>
-                          <th style={{ padding: "10px 12px", textAlign: "left", borderBottom: "2px solid #e5e7eb", fontWeight: 700, color: "#374151" }}>ID</th>
-                          <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #e5e7eb", fontWeight: 700, color: "#374151", width: 120 }}>Note /{maxScore}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {students.map((s, idx) => (
-                          <tr key={s.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                            <td style={{ padding: "8px 12px", color: "#6b7280" }}>{idx + 1}</td>
-                            <td style={{ padding: "8px 12px", fontWeight: 600, color: "#111827" }}>{s.name}</td>
-                            <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 12, color: "#6b7280" }}>{s.unique_id}</td>
-                            <td style={{ padding: "8px 12px", textAlign: "center" }}>
-                              <input
-                                type="number"
-                                min={0}
-                                max={maxScore}
-                                step={0.5}
-                                value={studentScores[s.id] ?? ""}
-                                onChange={(e) => setStudentScores((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                                style={{
-                                  width: 80,
-                                  padding: "8px 10px",
-                                  border: "2px solid #d1d5db",
-                                  borderRadius: 8,
-                                  fontSize: 15,
-                                  fontWeight: 700,
-                                  textAlign: "center",
-                                  outline: "none",
-                                  transition: "border-color 0.2s",
-                                }}
-                                onFocus={(e) => (e.target.style.borderColor = "#10b981")}
-                                onBlur={(e) => (e.target.style.borderColor = "#d1d5db")}
-                                placeholder="—"
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div style={{ display: "flex", gap: 12, marginTop: 16, justifyContent: "flex-end" }}>
-                    <button style={btnSecondary} onClick={() => setStudentScores({})}>Effacer tout</button>
-                    <button style={{ ...btnPrimary, opacity: submitting ? 0.6 : 1 }} disabled={submitting} onClick={handleSubmitGrades}>
-                      {submitting ? "Enregistrement..." : `💾 Enregistrer ${Object.values(studentScores).filter((v) => v !== "").length} note(s)`}
-                    </button>
-                  </div>
-                </>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#f9fafb' }}>
+                      <th style={{ padding: 12, textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#374151' }}>Élève</th>
+                      <th style={{ padding: 12, textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#374151' }}>ID</th>
+                      <th style={{ padding: 12, textAlign: 'center', fontSize: 13, fontWeight: 600, color: '#374151' }}>Note /{maxScore}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {students.map((student) => (
+                      <tr key={student.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: 12, fontSize: 14 }}>{student.name}</td>
+                        <td style={{ padding: 12, fontSize: 13, color: '#6b7280' }}>{student.unique_id}</td>
+                        <td style={{ padding: 12, textAlign: 'center' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max={maxScore}
+                            value={studentScores[student.id] || ''}
+                            onChange={(e) => setStudentScores({ ...studentScores, [student.id]: e.target.value })}
+                            placeholder="-"
+                            style={{
+                              width: 80,
+                              padding: '8px',
+                              textAlign: 'center',
+                              borderRadius: 6,
+                              border: '1px solid #d1d5db'
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </div>
-          )}
+          </div>
         </div>
       )}
 
-      {/* ===================== TAB: VIEW GRADES ===================== */}
       {activeTab === "view" && (
         <div>
-          <div style={cardStyle}>
-            <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+          <h3 style={{ marginBottom: 16 }}>📋 Voir les notes</h3>
+          <div style={{ background: '#f9fafb', padding: 20, borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Période</label>
-                <select style={{ ...selectStyle, width: 180 }} value={viewPeriod} onChange={(e) => setViewPeriod(Number(e.target.value))}>
-                  <option value={1}>1ère Période (T1)</option>
-                  <option value={2}>2ème Période (T2)</option>
-                  <option value={3}>3ème Période (T3)</option>
+                <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>Période</label>
+                <select 
+                  value={viewPeriod} 
+                  onChange={(e) => setViewPeriod(Number(e.target.value))}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db' }}
+                >
+                  {getPeriods().map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Cours</label>
-                <select style={{ ...selectStyle, width: 200 }} value={viewCourseId ?? ""} onChange={(e) => setViewCourseId(e.target.value ? Number(e.target.value) : null)}>
+                <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>Cours</label>
+                <select 
+                  value={viewCourseId || ''} 
+                  onChange={(e) => setViewCourseId(Number(e.target.value))}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db' }}
+                >
                   <option value="">Tous les cours</option>
-                  {courses.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
+                  {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                <button 
+                  onClick={fetchExistingGrades}
+                  style={{ 
+                    width: '100%',
+                    padding: '10px', 
+                    background: '#3b82f6', 
+                    color: '#fff', 
+                    border: 'none', 
+                    borderRadius: 8, 
+                    cursor: 'pointer',
+                    fontWeight: 600
+                  }}
+                >
+                  🔍 Rechercher
+                </button>
               </div>
             </div>
+          </div>
 
-            {loadingGrades && <p style={{ color: "#6b7280" }}>Chargement...</p>}
-
-            {!loadingGrades && existingGrades.length === 0 && (
-              <div style={{ textAlign: "center", padding: 30, color: "#9ca3af" }}>
-                <div style={{ fontSize: 40, marginBottom: 8 }}>📭</div>
-                <p>Aucune note trouvée pour cette période.</p>
+          {loadingGrades ? (
+            <p style={{ textAlign: 'center', color: '#6b7280' }}>Chargement...</p>
+          ) : existingGrades.length === 0 ? (
+            <p style={{ textAlign: 'center', color: '#6b7280' }}>Aucune note trouvée</p>
+          ) : (
+            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+              <div style={{ padding: '12px 16px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                <span style={{ fontWeight: 600 }}>{existingGrades.length} notes trouvées</span>
               </div>
-            )}
-
-            {!loadingGrades && existingGrades.length > 0 && (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <div style={{ maxHeight: 500, overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ background: "#f9fafb" }}>
-                      <th style={{ padding: "8px 10px", textAlign: "left", borderBottom: "2px solid #e5e7eb" }}>Élève</th>
-                      <th style={{ padding: "8px 10px", textAlign: "left", borderBottom: "2px solid #e5e7eb" }}>Cours</th>
-                      <th style={{ padding: "8px 10px", textAlign: "center", borderBottom: "2px solid #e5e7eb" }}>Type</th>
-                      <th style={{ padding: "8px 10px", textAlign: "center", borderBottom: "2px solid #e5e7eb" }}>Note</th>
-                      <th style={{ padding: "8px 10px", textAlign: "left", borderBottom: "2px solid #e5e7eb" }}>Description</th>
-                      <th style={{ padding: "8px 10px", textAlign: "center", borderBottom: "2px solid #e5e7eb" }}>Date</th>
-                      <th style={{ padding: "8px 10px", textAlign: "center", borderBottom: "2px solid #e5e7eb" }}>Action</th>
+                    <tr style={{ background: '#f9fafb' }}>
+                      <th style={{ padding: 12, textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#374151' }}>Date</th>
+                      <th style={{ padding: 12, textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#374151' }}>Élève</th>
+                      <th style={{ padding: 12, textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#374151' }}>Cours</th>
+                      <th style={{ padding: 12, textAlign: 'center', fontSize: 13, fontWeight: 600, color: '#374151' }}>Type</th>
+                      <th style={{ padding: 12, textAlign: 'center', fontSize: 13, fontWeight: 600, color: '#374151' }}>Note</th>
+                      <th style={{ padding: 12, textAlign: 'left', fontSize: 13, fontWeight: 600, color: '#374151' }}>Description</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {existingGrades.map((g) => (
-                      <tr key={g.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                        <td style={{ padding: "8px 10px", fontWeight: 600 }}>{g.student_name}</td>
-                        <td style={{ padding: "8px 10px" }}>{g.course_name}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "center" }}>
-                          <span style={{
-                            padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700,
-                            background: g.grade_type === "interro" ? "#dbeafe" : g.grade_type === "devoir" ? "#fef3c7" : "#ede9fe",
-                            color: g.grade_type === "interro" ? "#1e40af" : g.grade_type === "devoir" ? "#92400e" : "#5b21b6",
+                    {existingGrades.map((grade) => (
+                      <tr key={grade.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: 12, fontSize: 13 }}>{grade.grade_date}</td>
+                        <td style={{ padding: 12, fontSize: 14 }}>{grade.student_name}</td>
+                        <td style={{ padding: 12, fontSize: 14 }}>{grade.course_name}</td>
+                        <td style={{ padding: 12, textAlign: 'center' }}>
+                          <span style={{ 
+                            padding: '4px 8px', 
+                            borderRadius: 4, 
+                            fontSize: 12,
+                            background: grade.grade_type === 'examen' ? '#dbeafe' : grade.grade_type === 'devoir' ? '#dcfce7' : '#fef3c7',
+                            color: grade.grade_type === 'examen' ? '#1e40af' : grade.grade_type === 'devoir' ? '#166534' : '#92400e'
                           }}>
-                            {g.grade_type === "interro" ? "Interro" : g.grade_type === "devoir" ? "Devoir" : "Examen"}
+                            {grade.grade_type === 'interro' ? 'Interrogation' : grade.grade_type === 'devoir' ? 'Devoir' : 'Examen'}
                           </span>
                         </td>
-                        <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 700, fontSize: 14 }}>
-                          {g.score}/{g.max_score}
-                        </td>
-                        <td style={{ padding: "8px 10px", color: "#6b7280", fontSize: 12 }}>{g.description || "—"}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "center", fontSize: 12, color: "#6b7280" }}>{g.grade_date || "—"}</td>
-                        <td style={{ padding: "8px 10px", textAlign: "center" }}>
-                          <button onClick={() => handleDeleteGrade(g.id)} style={{
-                            background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 6,
-                            padding: "4px 10px", fontSize: 12, cursor: "pointer", fontWeight: 600,
-                          }}>🗑️</button>
-                        </td>
+                        <td style={{ padding: 12, textAlign: 'center', fontWeight: 600 }}>{grade.score}/{grade.max_score}</td>
+                        <td style={{ padding: 12, fontSize: 13, color: '#6b7280' }}>{grade.description || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 8 }}>
-                  Total: {existingGrades.length} note(s)
-                </p>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* ===================== TAB: BULLETIN ===================== */}
       {activeTab === "bulletin" && (
         <div>
-          <div style={cardStyle}>
-            <h3 style={{ margin: "0 0 16px", fontSize: 16, color: "#111827" }}>📊 Bulletin de l&apos;élève</h3>
-
-            <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Élève *</label>
-                <select style={{ ...selectStyle, width: 250 }} value={bulletinStudentId ?? ""} onChange={(e) => setBulletinStudentId(e.target.value ? Number(e.target.value) : null)}>
-                  <option value="">-- Choisir un élève --</option>
-                  {students.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.unique_id})</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Période</label>
-                <select style={{ ...selectStyle, width: 180 }} value={bulletinPeriod ?? ""} onChange={(e) => setBulletinPeriod(e.target.value ? Number(e.target.value) : null)}>
-                  <option value={1}>1ère Période (T1)</option>
-                  <option value={2}>2ème Période (T2)</option>
-                  <option value={3}>3ème Période (T3)</option>
-                  <option value="">Annuel</option>
-                </select>
-              </div>
-              <button style={btnPrimary} onClick={fetchBulletin} disabled={!bulletinStudentId || loadingBulletin}>
-                {loadingBulletin ? "Chargement..." : "📊 Générer Bulletin"}
-              </button>
+          <h3 style={{ marginBottom: 16 }}>📊 Bulletin trimestriel</h3>
+          <p style={{ color: '#6b7280', marginBottom: 20 }}>Générez et envoyez les bulletins aux élèves et parents.</p>
+          
+          {!classId ? (
+            <div style={{ background: '#fef3c7', padding: 24, borderRadius: 12, border: '1px solid #fde68a', textAlign: 'center' }}>
+              <p style={{ color: '#92400e', fontWeight: 500 }}>⚠️ Veuillez d'abord sélectionner une classe dans l'onglet "📝 Saisir Notes"</p>
             </div>
-          </div>
-
-          {loadingBulletin && <p style={{ color: "#6b7280" }}>Chargement du bulletin...</p>}
-
-          {bulletinData && bulletinData.type === "period" && (
-            <div style={cardStyle}>
-              {/* Bulletin Header */}
-              <div style={{
-                background: "linear-gradient(135deg, #1e3a5f, #2563eb)",
-                borderRadius: 14, padding: "20px 24px", color: "#fff", marginBottom: 20,
-                textAlign: "center",
-              }}>
-                <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 800 }}>BULLETIN SCOLAIRE</h2>
-                <p style={{ margin: 0, opacity: 0.9, fontSize: 14 }}>
-                  {bulletinData.student?.name} — {bulletinData.class?.name} — {bulletinData.period}ème Période
-                </p>
-              </div>
-
-              {/* Courses table */}
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: "#f0f9ff" }}>
-                      <th style={{ padding: "10px 12px", textAlign: "left", borderBottom: "2px solid #bfdbfe", fontWeight: 700 }}>Cours</th>
-                      <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #bfdbfe", fontWeight: 700 }}>Coeff.</th>
-                      <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #bfdbfe", fontWeight: 700 }}>Max</th>
-                      <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #bfdbfe", fontWeight: 700 }}>Moy. Interro</th>
-                      <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #bfdbfe", fontWeight: 700 }}>Moy. Devoir</th>
-                      <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #bfdbfe", fontWeight: 700 }}>Moy. Cours</th>
-                      <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #bfdbfe", fontWeight: 700 }}>Points</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(bulletinData.courses || []).map((c: BulletinCourse) => (
-                      <tr key={c.course_id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                        <td style={{ padding: "8px 12px", fontWeight: 600 }}>{c.course_name}</td>
-                        <td style={{ padding: "8px 12px", textAlign: "center", color: "#6b7280" }}>×{c.coefficient}</td>
-                        <td style={{ padding: "8px 12px", textAlign: "center", color: "#6b7280" }}>/{c.max_score}</td>
-                        <td style={{ padding: "8px 12px", textAlign: "center" }}>
-                          {c.interro_avg !== null ? (
-                            <span style={{ fontWeight: 600 }}>{c.interro_avg}</span>
-                          ) : (
-                            <span style={{ color: "#d1d5db" }}>—</span>
-                          )}
-                          {c.interro_count > 0 && <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 4 }}>({c.interro_count})</span>}
-                        </td>
-                        <td style={{ padding: "8px 12px", textAlign: "center" }}>
-                          {c.devoir_avg !== null ? (
-                            <span style={{ fontWeight: 600 }}>{c.devoir_avg}</span>
-                          ) : (
-                            <span style={{ color: "#d1d5db" }}>—</span>
-                          )}
-                          {c.devoir_count > 0 && <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 4 }}>({c.devoir_count})</span>}
-                        </td>
-                        <td style={{ padding: "8px 12px", textAlign: "center", fontWeight: 700, fontSize: 14 }}>
-                          {c.course_avg !== null ? c.course_avg : <span style={{ color: "#d1d5db" }}>—</span>}
-                        </td>
-                        <td style={{ padding: "8px 12px", textAlign: "center", fontWeight: 700, fontSize: 14 }}>
-                          {c.points_obtained !== null ? (
-                            <span>{c.points_obtained}<span style={{ color: "#9ca3af", fontWeight: 400 }}>/{c.points_possible}</span></span>
-                          ) : (
-                            <span style={{ color: "#d1d5db" }}>—/{c.points_possible}</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr style={{ background: "#f9fafb", fontWeight: 700 }}>
-                      <td colSpan={6} style={{ padding: "12px", textAlign: "right", fontSize: 15 }}>TOTAL</td>
-                      <td style={{ padding: "12px", textAlign: "center", fontSize: 16 }}>
-                        {bulletinData.total_obtained}<span style={{ color: "#9ca3af", fontWeight: 400 }}>/{bulletinData.total_possible}</span>
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-
-              {/* Summary */}
-              <div style={{
-                display: "flex", gap: 16, marginTop: 20, flexWrap: "wrap", justifyContent: "center",
-              }}>
-                <div style={{
-                  background: "#f0f9ff", border: "2px solid #bfdbfe", borderRadius: 14,
-                  padding: "16px 24px", textAlign: "center", minWidth: 140,
-                }}>
-                  <div style={{ fontSize: 28, fontWeight: 800, color: "#1e40af" }}>{bulletinData.percentage}%</div>
-                  <div style={{ fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Pourcentage</div>
+          ) : (
+            <>
+              <div style={{ background: '#f9fafb', padding: 20, borderRadius: 12, marginBottom: 20 }}>
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ fontWeight: 600 }}>Classe actuelle: <span style={{ color: '#2563eb' }}>{className || classId}</span></p>
                 </div>
-                <div style={{
-                  background: getMentionBg(bulletinData.mention),
-                  border: `2px solid ${getMentionColor(bulletinData.mention)}20`,
-                  borderRadius: 14, padding: "16px 24px", textAlign: "center", minWidth: 140,
-                }}>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: getMentionColor(bulletinData.mention) }}>{bulletinData.mention}</div>
-                  <div style={{ fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Mention</div>
-                </div>
-                <div style={{
-                  background: bulletinData.passed ? "#f0fdf4" : "#fef2f2",
-                  border: `2px solid ${bulletinData.passed ? "#bbf7d0" : "#fecaca"}`,
-                  borderRadius: 14, padding: "16px 24px", textAlign: "center", minWidth: 140,
-                }}>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: bulletinData.passed ? "#166534" : "#991b1b" }}>
-                    {bulletinData.passed ? "✅ RÉUSSI" : "❌ ÉCHEC"}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#6b7280" }}>Seuil: {bulletinData.pass_percentage}%</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {bulletinData && bulletinData.type === "annual" && (
-            <div style={cardStyle}>
-              <div style={{
-                background: "linear-gradient(135deg, #7c3aed, #a855f7)",
-                borderRadius: 14, padding: "20px 24px", color: "#fff", marginBottom: 20,
-                textAlign: "center",
-              }}>
-                <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 800 }}>BULLETIN ANNUEL</h2>
-                <p style={{ margin: 0, opacity: 0.9, fontSize: 14 }}>
-                  {bulletinData.student?.name} — {bulletinData.class?.name}
-                </p>
-              </div>
-
-              {(bulletinData.periods || []).map((p: any) => (
-                <div key={p.period} style={{ marginBottom: 16, border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
-                  <div style={{ background: "#f9fafb", padding: "10px 16px", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <strong>Période {p.period}</strong>
-                    <span style={{
-                      padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 700,
-                      background: getMentionBg(p.mention), color: getMentionColor(p.mention),
-                    }}>
-                      {p.percentage}% — {p.mention}
-                    </span>
-                  </div>
-                  <div style={{ padding: "8px 16px", fontSize: 13 }}>
-                    <span style={{ fontWeight: 600 }}>Total: {p.total_obtained}/{p.total_possible}</span>
+                
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontWeight: 600 }}>Période</label>
+                    <select
+                      style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #d1d5db', minWidth: 180 }}
+                      value={selectedPeriod}
+                      onChange={(e) => setSelectedPeriod(Number(e.target.value))}
+                    >
+                      <optgroup label="Trimestre 1">
+                        <option value={1}>Période 1</option>
+                        <option value={2}>Période 2</option>
+                        <option value={3}>Examen T1</option>
+                      </optgroup>
+                      <optgroup label="Trimestre 2">
+                        <option value={4}>Période 4</option>
+                        <option value={5}>Période 5</option>
+                        <option value={6}>Examen T2</option>
+                      </optgroup>
+                      <optgroup label="Trimestre 3">
+                        <option value={7}>Période 7</option>
+                        <option value={8}>Période 8</option>
+                        <option value={9}>Examen T3</option>
+                      </optgroup>
+                    </select>
                   </div>
                 </div>
-              ))}
-
-              <div style={{
-                display: "flex", gap: 16, marginTop: 20, flexWrap: "wrap", justifyContent: "center",
-              }}>
-                <div style={{
-                  background: "#f5f3ff", border: "2px solid #c4b5fd", borderRadius: 14,
-                  padding: "16px 24px", textAlign: "center", minWidth: 160,
-                }}>
-                  <div style={{ fontSize: 28, fontWeight: 800, color: "#7c3aed" }}>{bulletinData.annual_percentage}%</div>
-                  <div style={{ fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Moyenne Annuelle</div>
-                </div>
-                <div style={{
-                  background: getMentionBg(bulletinData.annual_mention),
-                  border: `2px solid ${getMentionColor(bulletinData.annual_mention)}20`,
-                  borderRadius: 14, padding: "16px 24px", textAlign: "center", minWidth: 160,
-                }}>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: getMentionColor(bulletinData.annual_mention) }}>{bulletinData.annual_mention}</div>
-                  <div style={{ fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Mention</div>
-                </div>
-                <div style={{
-                  background: bulletinData.passed ? "#f0fdf4" : "#fef2f2",
-                  border: `2px solid ${bulletinData.passed ? "#bbf7d0" : "#fecaca"}`,
-                  borderRadius: 14, padding: "16px 24px", textAlign: "center", minWidth: 160,
-                }}>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: bulletinData.passed ? "#166534" : "#991b1b" }}>
-                    {bulletinData.passed ? "✅ RÉUSSI" : "❌ ÉCHEC"}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#6b7280" }}>Seuil: {bulletinData.pass_percentage}%</div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ===================== TAB: CLASS SUMMARY ===================== */}
-      {activeTab === "summary" && (
-        <div>
-          <div style={cardStyle}>
-            <h3 style={{ margin: "0 0 16px", fontSize: 16, color: "#111827" }}>🏆 Classement de la classe</h3>
-
-            <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "flex-end" }}>
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Période</label>
-                <select style={{ ...selectStyle, width: 180 }} value={summaryPeriod} onChange={(e) => setSummaryPeriod(Number(e.target.value))}>
-                  <option value={1}>1ère Période (T1)</option>
-                  <option value={2}>2ème Période (T2)</option>
-                  <option value={3}>3ème Période (T3)</option>
-                </select>
-              </div>
-              <button style={btnPrimary} onClick={fetchClassSummary} disabled={loadingSummary}>
-                {loadingSummary ? "Chargement..." : "📊 Voir Classement"}
-              </button>
-            </div>
-          </div>
-
-          {loadingSummary && <p style={{ color: "#6b7280" }}>Chargement...</p>}
-
-          {summaryData && (
-            <div style={cardStyle}>
-              {/* Stats */}
-              <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: "12px 20px", textAlign: "center" }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: "#166534" }}>{summaryData.passed_count}</div>
-                  <div style={{ fontSize: 11, color: "#6b7280" }}>Réussi</div>
-                </div>
-                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, padding: "12px 20px", textAlign: "center" }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: "#991b1b" }}>{summaryData.failed_count}</div>
-                  <div style={{ fontSize: 11, color: "#6b7280" }}>Échec</div>
-                </div>
-                <div style={{ background: "#f0f9ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "12px 20px", textAlign: "center" }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: "#1e40af" }}>{summaryData.total_students}</div>
-                  <div style={{ fontSize: 11, color: "#6b7280" }}>Total</div>
-                </div>
-              </div>
-
-              {/* Ranking table */}
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: "#f9fafb" }}>
-                      <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #e5e7eb", fontWeight: 700, width: 60 }}>Rang</th>
-                      <th style={{ padding: "10px 12px", textAlign: "left", borderBottom: "2px solid #e5e7eb", fontWeight: 700 }}>Nom</th>
-                      <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #e5e7eb", fontWeight: 700 }}>ID</th>
-                      <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #e5e7eb", fontWeight: 700 }}>Points</th>
-                      <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #e5e7eb", fontWeight: 700 }}>%</th>
-                      <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #e5e7eb", fontWeight: 700 }}>Mention</th>
-                      <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #e5e7eb", fontWeight: 700 }}>Statut</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(summaryData.students || []).map((s: ClassSummaryStudent) => (
-                      <tr key={s.student_id} style={{
-                        borderBottom: "1px solid #f3f4f6",
-                        background: s.rank <= 3 ? "#fffbeb" : "transparent",
-                      }}>
-                        <td style={{ padding: "8px 12px", textAlign: "center", fontWeight: 800, fontSize: 16 }}>
-                          {s.rank === 1 ? "🥇" : s.rank === 2 ? "🥈" : s.rank === 3 ? "🥉" : s.rank}
-                        </td>
-                        <td style={{ padding: "8px 12px", fontWeight: 600 }}>{s.student_name}</td>
-                        <td style={{ padding: "8px 12px", textAlign: "center", fontFamily: "monospace", fontSize: 12, color: "#6b7280" }}>{s.unique_id}</td>
-                        <td style={{ padding: "8px 12px", textAlign: "center", fontWeight: 600 }}>
-                          {s.total_obtained}<span style={{ color: "#9ca3af" }}>/{s.total_possible}</span>
-                        </td>
-                        <td style={{ padding: "8px 12px", textAlign: "center", fontWeight: 700, fontSize: 15 }}>
-                          {s.percentage}%
-                        </td>
-                        <td style={{ padding: "8px 12px", textAlign: "center" }}>
-                          <span style={{
-                            padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
-                            background: getMentionBg(s.mention), color: getMentionColor(s.mention),
-                          }}>
-                            {s.mention}
-                          </span>
-                        </td>
-                        <td style={{ padding: "8px 12px", textAlign: "center" }}>
-                          {s.passed ? (
-                            <span style={{ color: "#166534", fontWeight: 700 }}>✅</span>
-                          ) : (
-                            <span style={{ color: "#991b1b", fontWeight: 700 }}>❌</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ===================== TAB: CONFIG ===================== */}
-      {activeTab === "config" && (
-        <div>
-          <div style={cardStyle}>
-            <h3 style={{ margin: "0 0 16px", fontSize: 16, color: "#111827" }}>⚙️ Configuration des cours</h3>
-            <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
-              Définissez le coefficient et la cote maximale pour chaque cours de votre classe.
-              Le coefficient détermine l&apos;importance du cours dans le calcul du total.
-            </p>
-
-            {courses.length === 0 ? (
-              <p style={{ color: "#9ca3af", fontSize: 13 }}>Aucun cours assigné à cette classe.</p>
-            ) : (
-              <>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                    <thead>
-                      <tr style={{ background: "#f9fafb" }}>
-                        <th style={{ padding: "10px 12px", textAlign: "left", borderBottom: "2px solid #e5e7eb", fontWeight: 700 }}>Cours</th>
-                        <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #e5e7eb", fontWeight: 700, width: 120 }}>Coefficient</th>
-                        <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #e5e7eb", fontWeight: 700, width: 120 }}>Cote Max</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {courses.map((c) => (
-                        <tr key={c.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                          <td style={{ padding: "8px 12px", fontWeight: 600 }}>{c.name}</td>
-                          <td style={{ padding: "8px 12px", textAlign: "center" }}>
-                            <input
-                              type="number"
-                              min={1}
-                              max={10}
-                              value={configCoefficients[c.id]?.coefficient ?? 1}
-                              onChange={(e) => setConfigCoefficients((prev) => ({
-                                ...prev,
-                                [c.id]: { ...prev[c.id], coefficient: Number(e.target.value), max_score: prev[c.id]?.max_score ?? 10 },
-                              }))}
-                              style={{
-                                width: 70, padding: "6px 8px", border: "2px solid #d1d5db",
-                                borderRadius: 8, fontSize: 14, fontWeight: 700, textAlign: "center",
-                              }}
-                            />
-                          </td>
-                          <td style={{ padding: "8px 12px", textAlign: "center" }}>
-                            <input
-                              type="number"
-                              min={1}
-                              max={100}
-                              value={configCoefficients[c.id]?.max_score ?? 10}
-                              onChange={(e) => setConfigCoefficients((prev) => ({
-                                ...prev,
-                                [c.id]: { ...prev[c.id], max_score: Number(e.target.value), coefficient: prev[c.id]?.coefficient ?? 1 },
-                              }))}
-                              style={{
-                                width: 70, padding: "6px 8px", border: "2px solid #d1d5db",
-                                borderRadius: 8, fontSize: 14, fontWeight: 700, textAlign: "center",
-                              }}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
-                  <button style={{ ...btnPrimary, opacity: savingConfig ? 0.6 : 1 }} disabled={savingConfig} onClick={handleSaveConfigs}>
-                    {savingConfig ? "Sauvegarde..." : "💾 Sauvegarder Configuration"}
+                
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button
+                    style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 24px', fontWeight: 700, cursor: 'pointer' }}
+                    onClick={handleSubmitBulletinTeacher}
+                    disabled={!classId || submittingBulletin}
+                  >
+                    {submittingBulletin ? 'Publication...' : '📤 Publier et Envoyer'}
                   </button>
                 </div>
-              </>
-            )}
+                
+                {success && (
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', borderRadius: 8, padding: '12px 16px', marginTop: 16 }}>
+                    ✅ {success}
+                  </div>
+                )}
+                {error && (
+                  <div style={{ background: '#fee2e2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 8, padding: '12px 16px', marginTop: 16 }}>
+                    ❌ {error}
+                  </div>
+                )}
+              </div>
+              
+              <div style={{ background: '#f0fdf4', padding: 16, borderRadius: 12, border: '1px solid #bbf7d0' }}>
+                <p style={{ color: '#166534', fontWeight: 500, marginBottom: 8 }}>À propos des bulletins</p>
+                <ul style={{ color: '#6b7280', fontSize: 14, paddingLeft: 20, margin: 0 }}>
+                  <li>Les bulletins sont générés pour tous les élèves de la classe</li>
+                  <li>Chaque élève et son/ses parents reçoivent un message avec les résultats</li>
+                  <li>Le message inclut: moyenne, rang, mention et décision</li>
+                </ul>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {activeTab === "semester" && (
+        <div>
+          <h3 style={{ marginBottom: 16 }}>📋 Semestre (Secondaire)</h3>
+          <p style={{ color: '#6b7280', marginBottom: 20 }}>Gestion des notes semestrielles.</p>
+          <div style={{ background: '#eff6ff', padding: 24, borderRadius: 12, border: '1px solid #bfdbfe', textAlign: 'center' }}>
+            <p style={{ color: '#1e40af', fontWeight: 500 }}>🔄 Module Semestre</p>
+            <p style={{ color: '#6b7280', fontSize: 14 }}>Pour le système secondaire avec semestres S1 et S2.</p>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "summary" && (
+        <div>
+          <h3 style={{ marginBottom: 16 }}>🏆 Classement</h3>
+          <p style={{ color: '#6b7280', marginBottom: 20 }}>Classement des élèves par performance.</p>
+          <div style={{ background: '#fef3c7', padding: 24, borderRadius: 12, border: '1px solid #fde68a', textAlign: 'center' }}>
+            <p style={{ color: '#92400e', fontWeight: 500 }}>🏅 Module Classement</p>
+            <p style={{ color: '#6b7280', fontSize: 14 }}>Vue d'ensemble des performances.</p>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "config" && (
+        <div>
+          <h3 style={{ marginBottom: 16 }}>⚙️ Configuration des notes</h3>
+          <div style={{ background: '#f9fafb', padding: 24, borderRadius: 12, border: '1px solid #e5e7eb', marginBottom: 20 }}>
+            <p style={{ color: '#6b7280', marginBottom: 20 }}>
+              Configurez les pondérations pour le calcul des moyennes et les seuils de décision. 
+              Ces paramètres s'appliquent à toutes les classes de votre école.
+            </p>
+            
+            <div style={{ marginBottom: 24 }}>
+              <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#374151' }}>📐 Pondérations des notes</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>Interrogation (%)</label>
+                  <input type="number" min="0" max="100" defaultValue={50} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>Devoir (%)</label>
+                  <input type="number" min="0" max="100" defaultValue={50} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500 }}>Examen (%)</label>
+                  <input type="number" min="0" max="100" defaultValue={0} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db' }} />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <h4 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, color: '#374151' }}>🎯 Seuils de décision</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500, color: '#059669' }}>Réussi (%)</label>
+                  <input type="number" min="0" max="100" defaultValue={50} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #10b981' }} />
+                  <span style={{ fontSize: 12, color: '#6b7280' }}>Minimum pour réussir</span>
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500, color: '#d97706' }}>Repêchage (%)</label>
+                  <input type="number" min="0" max="100" defaultValue={45} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #f59e0b' }} />
+                  <span style={{ fontSize: 12, color: '#6b7280' }}>45-49% : Examen de rattrapage</span>
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontSize: 14, fontWeight: 500, color: '#dc2626' }}>Double (%)</label>
+                  <input type="number" min="0" max="100" defaultValue={55} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #ef4444' }} />
+                  <span style={{ fontSize: 12, color: '#6b7280' }}>Minimum pour passer (certaines écoles)</span>
+                </div>
+              </div>
+            </div>
+
+            <button 
+              onClick={handleSaveGradeConfig}
+              disabled={savingConfig}
+              style={{ 
+                padding: '12px 24px', 
+                background: savingConfig ? '#9ca3af' : '#10b981', 
+                color: '#fff', 
+                border: 'none', 
+                borderRadius: 8, 
+                cursor: savingConfig ? 'not-allowed' : 'pointer', 
+                fontWeight: 600,
+                fontSize: 14
+              }}
+            >
+              {savingConfig ? '⏳ Enregistrement...' : '💾 Enregistrer la configuration'}
+            </button>
           </div>
 
-          {/* Info box */}
-          <div style={{
-            background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 14,
-            padding: "16px 20px", fontSize: 13, color: "#1e40af",
-          }}>
-            <strong>ℹ️ Comment fonctionne le calcul des points (Primaire RDC):</strong>
-            <ul style={{ margin: "8px 0 0", paddingLeft: 20, lineHeight: 1.8 }}>
-              <li><strong>Coefficient:</strong> Importance du cours (ex: Math ×3, Français ×2)</li>
-              <li><strong>Cote max:</strong> Note maximale possible (ex: /10, /20)</li>
-              <li><strong>Points = Moyenne du cours × Coefficient</strong></li>
-              <li><strong>Pourcentage = (Total obtenu ÷ Total possible) × 100</strong></li>
-              <li><strong>Moyenne période = (Moy. Interros × 50%) + (Moy. Devoirs × 50%)</strong></li>
-              <li><strong>Moyenne annuelle = (P1 + P2 + P3) ÷ 3</strong></li>
-            </ul>
-            <div style={{ marginTop: 10 }}>
-              <strong>Mentions:</strong> 50% Suffisant | 60% Distinction | 70% Grande Distinction | 80%+ Très Grande Distinction
-            </div>
+          <div style={{ background: '#fff', padding: 16, borderRadius: 8, border: '1px solid #e5e7eb' }}>
+            <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>ℹ️ Information</h4>
+            <p style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6 }}>
+              Les paramètres de l'école sont configurés par l'administrateur scolaire. 
+              Les enseignants peuvent consulter ces paramètres mais ne peuvent pas les modifier.
+              Pour changer les pondérations ou les seuils, contactez votre SCHOOL_ADMIN.
+            </p>
           </div>
         </div>
       )}

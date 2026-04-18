@@ -1,31 +1,364 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { useEffect, useState, useCallback } from "react";
+import { FaPlus, FaSearch, FaTimes } from "react-icons/fa";
+import { apiGet, apiPost } from "@/utils/api";
+import "@/app/dashboard/school/classes.css";
 
-export default function ClassesIndexRedirect() {
-  const router = useRouter();
+interface Class {
+  id: number;
+  name: string;
+  level?: string;
+  main_teacher_id?: number;
+  main_teacher_name?: string;
+  created_at?: string;
+}
+
+interface TeacherOption {
+  id: number;
+  name: string;
+}
+
+const LEVELS = [
+  { key: "maternelle", label: "Maternelle", icon: "👶", classes: ["1ere maternelle", "2eme maternelle", "3eme maternelle"] },
+  { key: "primaire", label: "Primaire", icon: "📚", classes: ["1ere primaire", "2eme primaire", "3eme primaire", "4eme primaire", "5eme primaire", "6eme primaire"] },
+  { key: "secondaire", label: "Secondaire", icon: "🎓", classes: ["7eme secondaire", "8eme secondaire", "1ere secondaire", "2eme secondaire", "3eme secondaire", "4eme secondaire"] },
+];
+
+export default function ClassesPage() {
+  const [activeType, setActiveType] = useState("primaire");
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [schoolId, setSchoolId] = useState<number | null>(null);
+  const [userAdminLevel, setUserAdminLevel] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedBaseClass, setSelectedBaseClass] = useState("");
+  const [classSuffix, setClassSuffix] = useState("");
+  const [secondaryOption, setSecondaryOption] = useState("");
+  const [customSecondaryOption, setCustomSecondaryOption] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [teachers, setTeachers] = useState<TeacherOption[]>([]);
+  const [selectedTeacherByClass, setSelectedTeacherByClass] = useState<Record<number, string>>({});
+  const [assigningByClass, setAssigningByClass] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
-    try {
-      const userStr = window.localStorage.getItem("user");
-      const user = userStr ? JSON.parse(userStr) : null;
-      const lockedLevel = user?.role === "SCHOOL_ADMIN" ? user?.admin_level : null;
-      const st = (lockedLevel || window.localStorage.getItem("school_type") || "primaire").toLowerCase();
-
-      if (st.includes("second")) {
-        router.replace("/dashboard/school/secondaire/classes");
-        return;
+    if (typeof window !== 'undefined') {
+      const id = parseInt(localStorage.getItem("school_id") || "0");
+      setSchoolId(id);
+      const u = localStorage.getItem("user");
+      if (u) {
+        try {
+          const user = JSON.parse(u);
+          setUserAdminLevel(user?.admin_level || user?.school_type || null);
+        } catch {}
       }
-      if (st.includes("matern")) {
-        router.replace("/dashboard/school/maternelle/classes");
-        return;
-      }
-      router.replace("/dashboard/school/primaire/classes");
-    } catch {
-      router.replace("/dashboard/school/primaire/classes");
     }
-  }, [router]);
+  }, []);
 
-  return null;
+  const fetchClasses = useCallback(async (level: string) => {
+    if (!schoolId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ school_id: schoolId.toString(), level });
+      const data = await apiGet(`/classes?${params}`);
+      const fetchedClasses = data.classes || [];
+      setClasses(fetchedClasses);
+      if (data.debug?.count === 0) {
+        setError(`No ${level} classes. Create first!`);
+      }
+    } catch (err: any) {
+      console.error("Classes fetch failed:", err);
+      setError("Failed to load classes");
+    } finally {
+      setLoading(false);
+    }
+  }, [schoolId]);
+
+  const fetchTeachers = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      const data = await apiGet(`/teachers?school_id=${schoolId}`);
+      const list: TeacherOption[] = (data.teachers || [])
+        .filter((u: any) => u.role === "TEACHER")
+        .map((u: any) => ({ id: Number(u.id), name: String(u.name || `Teacher #${u.id}`) }));
+      setTeachers(list);
+    } catch (err) {
+      console.error("Teachers fetch failed:", err);
+    }
+  }, [schoolId]);
+
+  useEffect(() => {
+    if (schoolId) {
+      fetchClasses(activeType);
+      fetchTeachers();
+    }
+  }, [schoolId, activeType, fetchClasses, fetchTeachers]);
+
+  useEffect(() => {
+    if (!userAdminLevel || !activeType) return;
+    const myLevel = userAdminLevel.toLowerCase();
+    const targetLevel = activeType.toLowerCase();
+
+    // For MIXED schools (mixed/mixte) → all levels allowed
+    if (myLevel === "mixed" || myLevel === "mixte") {
+      setAccessDenied(null);
+      return;
+    }
+
+    // For single-level admins → verify they access only their level
+    const allowed =
+      (myLevel === "primaire" && targetLevel === "primaire") ||
+      (myLevel === "maternelle" && targetLevel === "maternelle") ||
+      (myLevel === "secondaire" && targetLevel === "secondaire");
+
+    if (!allowed) {
+      setAccessDenied(`⛔ Access denied. You are assigned to manage ${myLevel.charAt(0).toUpperCase() + myLevel.slice(1)} only.`);
+    } else {
+      setAccessDenied(null);
+    }
+  }, [userAdminLevel, activeType]);
+
+  const filteredClasses = classes.filter(cls => cls.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const currentLevel = LEVELS.find(l => l.key === activeType)!;
+  const requiresSecondaryOption =
+    activeType === "secondaire" &&
+    ["1ere secondaire", "2eme secondaire", "3eme secondaire", "4eme secondaire"].includes(selectedBaseClass);
+  const SECONDARY_OPTIONS = ["Littéraire", "Pédagogie", "Physique", "Scientifique", "Commerciale", "Autre..."];
+  const effectiveSecondaryOption = secondaryOption === "Autre..."
+    ? customSecondaryOption.trim()
+    : secondaryOption;
+
+  const handleCreate = async () => {
+    if (!selectedBaseClass || !classSuffix || !schoolId) return;
+    if (requiresSecondaryOption && !effectiveSecondaryOption) {
+      alert("Choisissez l'option pour cette classe secondaire");
+      return;
+    }
+
+    const fullName = requiresSecondaryOption
+      ? `${selectedBaseClass} ${effectiveSecondaryOption} ${classSuffix}`
+      : `${selectedBaseClass} ${classSuffix}`;
+    setCreating(true);
+    try {
+      const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') || '{}' : '{}';
+      const user = JSON.parse(userStr);
+      await apiPost('/classes', {
+        school_id: schoolId,
+        name: fullName,
+        level: activeType,
+        created_by: user.id
+      });
+      setShowCreateModal(false);
+      setSelectedBaseClass('');
+      setClassSuffix('');
+      setSecondaryOption('');
+      setCustomSecondaryOption('');
+      fetchClasses(activeType);
+    } catch (err: any) {
+      console.error("Class create failed:", err);
+      alert(`Create failed: ${err.message}`);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleAssignPrincipal = async (classId: number) => {
+    const teacherId = selectedTeacherByClass[classId];
+    if (!teacherId) {
+      alert("Select a teacher first");
+      return;
+    }
+
+    const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') || '{}' : '{}';
+    const user = JSON.parse(userStr);
+    if (!user?.id) {
+      alert("Missing current user");
+      return;
+    }
+
+    setAssigningByClass((prev) => ({ ...prev, [classId]: true }));
+    try {
+      await apiPost(`/classes/${classId}/assign-teacher`, {
+        teacher_id: Number(teacherId),
+        created_by: Number(user.id),
+      });
+      await fetchClasses(activeType);
+    } catch (err: any) {
+      console.error("Assign principal failed:", err);
+      alert(`Assign failed: ${err.message}`);
+    } finally {
+      setAssigningByClass((prev) => ({ ...prev, [classId]: false }));
+    }
+  };
+
+  if (!schoolId) {
+    return <div className="loading">Loading school info...</div>;
+  }
+
+  return (
+    <div className="classes-page">
+      {accessDenied && (
+        <div style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#991b1b", padding: 16, borderRadius: 8, marginBottom: 16, textAlign: "center", fontWeight: 600 }}>
+          {accessDenied}
+        </div>
+      )}
+      <div className="page-header">
+        <h1>{currentLevel.icon} Classes - {currentLevel.label}</h1>
+        <div className="header-actions">
+          <div className="search-container">
+            <FaSearch />
+            <input 
+              placeholder="Search classes..." 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
+            />
+          </div>
+          <button onClick={() => setShowCreateModal(true)} className="btn-primary">
+            <FaPlus /> New Class
+          </button>
+        </div>
+      </div>
+
+      <div className="level-tabs">
+        {LEVELS.map(level => (
+          <button 
+            key={level.key} 
+            className={`tab ${activeType === level.key ? "active" : ""}`} 
+            onClick={() => setActiveType(level.key)}
+          >
+            {level.icon} {level.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="loading">⏳ Loading classes...</div>
+      ) : error ? (
+        <div className="error">{error}</div>
+      ) : filteredClasses.length === 0 ? (
+        <div className="classes-empty">
+          <h3>No classes yet</h3>
+          <p>Select a base class and suffix (A, B...) to create.</p>
+          <button onClick={() => setShowCreateModal(true)} className="btn-primary">Create First Class</button>
+        </div>
+      ) : (
+        <div className="classes-grid">
+          {filteredClasses.map(cls => (
+            <div key={cls.id} className="class-card">
+              <h3>{cls.name}</h3>
+              {cls.main_teacher_name && (
+                <p><strong>Main Teacher:</strong> {cls.main_teacher_name}</p>
+              )}
+              <div className="card-actions">
+                <select
+                  value={selectedTeacherByClass[cls.id] || ""}
+                  onChange={(e) =>
+                    setSelectedTeacherByClass((prev) => ({ ...prev, [cls.id]: e.target.value }))
+                  }
+                >
+                  <option value="">Assign principale...</option>
+                  {teachers.map((t) => (
+                    <option key={t.id} value={String(t.id)}>{t.name}</option>
+                  ))}
+                </select>
+                <button
+                  className="btn-secondary"
+                  onClick={() => handleAssignPrincipal(cls.id)}
+                  disabled={!selectedTeacherByClass[cls.id] || !!assigningByClass[cls.id]}
+                >
+                  {assigningByClass[cls.id] ? "Assigning..." : "Assign Principale"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showCreateModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h2>Create {currentLevel.label} Class</h2>
+              <button className="modal-close" onClick={() => setShowCreateModal(false)}>
+                <FaTimes />
+              </button>
+            </div>
+            <div className="form-group">
+              <label>Base Class *</label>
+              <select
+                value={selectedBaseClass}
+                onChange={(e) => setSelectedBaseClass(e.target.value)}
+                className="full-width"
+              >
+                <option value="">Select base class</option>
+                {currentLevel.classes.map((baseName) => (
+                  <option key={baseName} value={baseName}>{baseName}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Suffix (A, B, C...) *</label>
+              <input
+                type="text"
+                value={classSuffix}
+                onChange={(e) => setClassSuffix(e.target.value.toUpperCase())}
+                placeholder="A, B, C..."
+                maxLength={2}
+              />
+            </div>
+            {requiresSecondaryOption && (
+              <div className="form-group">
+                <label>Option (1ère à 3ème secondaire) *</label>
+                <select
+                  value={secondaryOption}
+                  onChange={(e) => {
+                    setSecondaryOption(e.target.value);
+                    if (e.target.value !== "Autre...") setCustomSecondaryOption("");
+                  }}
+                  className="full-width"
+                >
+                  <option value="">Sélectionner une option</option>
+                  {SECONDARY_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+                {secondaryOption === "Autre..." && (
+                  <input
+                    type="text"
+                    value={customSecondaryOption}
+                    onChange={(e) => setCustomSecondaryOption(e.target.value)}
+                    placeholder="Ex: Math-Info, Biochimie, etc."
+                    className="full-width"
+                    style={{ marginTop: 8 }}
+                  />
+                )}
+              </div>
+            )}
+            <small>
+              {requiresSecondaryOption
+                ? 'Exemple: "2eme secondaire" + "Pédagogie" + "A" = "2eme secondaire Pédagogie A"'
+                : 'Example: "7eme secondaire" + "A" = "7eme secondaire A"'}
+            </small>
+            <div className="form-actions">
+              <button className="btn-cancel" onClick={() => setShowCreateModal(false)}>
+                Cancel
+              </button>
+              <button 
+                className="btn-save" 
+                onClick={handleCreate}
+                disabled={!selectedBaseClass || !classSuffix || (requiresSecondaryOption && !effectiveSecondaryOption) || creating}
+              >
+                {creating ? '⏳' : <FaPlus />}
+                {creating ? "Creating..." : "Create Class"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

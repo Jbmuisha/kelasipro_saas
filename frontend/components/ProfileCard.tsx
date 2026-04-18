@@ -38,10 +38,22 @@ export default function ProfileCard({ user, onImageUpdated, onPasswordSaved, edi
   const handleImageUpload = async (file: File) => {
     try {
       const token = localStorage.getItem("token");
-      const fd = new FormData();
-      fd.append("file", file);
+
+      // Convert file to base64 for JSON upload
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve) => {
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+      const base64Data = await base64Promise;
+
       const res = await fetch(`${API_URL}/api/uploads/profile-image`, {
-        method: "POST", headers: { Authorization: `Bearer ${token || ""}` }, body: fd,
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token || ""}` 
+        },
+        body: JSON.stringify({ file: base64Data })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Upload failed");

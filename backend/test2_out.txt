@@ -1,5 +1,0 @@
-Users found: 4
-Name: wali, Role: SECRETARY, School: 2
-Name: ali, Role: STUDENT, School: 2
-Name: john, Role: TEACHER, School: 2
-Name: gohy, Role: SCHOOL_ADMIN, School: 2

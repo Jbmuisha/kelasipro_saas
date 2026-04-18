@@ -31,6 +31,7 @@ type School = {
   name: string;
   email?: string;
   phone?: string;
+  school_type?: string;
 };
 
 export default function AdminUsersPage() {
@@ -38,6 +39,7 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [formData, setFormData] = useState<User>({
     id: "",
     name: "",
@@ -47,10 +49,11 @@ export default function AdminUsersPage() {
     school: "",
     status: "active",
     profile_image: "",
-    admin_level: "",
+    unique_id: "",
   } as any);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [schools, setSchools] = useState<School[]>([]);
+  const [selectedSchoolType, setSelectedSchoolType] = useState<string>("");
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
 
   // ================= SHOW TOAST =================
@@ -85,7 +88,7 @@ export default function AdminUsersPage() {
       school: "",
       status: "active",
       profile_image: "",
-      admin_level: "",
+      unique_id: "",
     } as any);
   };
 
@@ -113,19 +116,22 @@ export default function AdminUsersPage() {
         throw new Error("Invalid response from server");
       }
       
-      const transformedUsers = data.users.map((user: any) => ({
-        id: user.id?.toString() || "",
-        name: user.name || "",
-        email: user.email || "",
-        role: user.role || "",
-        status: user.status || "active",
-        school: user.school_id || "",
-        profile_image: user.profile_image || "",
-        unique_id: user.unique_id || "",
-        createdAt: user.created_at
-          ? new Date(user.created_at).toLocaleDateString()
-          : "",
-      }));
+      const transformedUsers = data.users.map((user: any) => {
+        console.log('[DEBUG] User profile_image:', user.profile_image?.substring(0, 50), '...length:', user.profile_image?.length);
+        return {
+          id: user.id?.toString() || "",
+          name: user.name || "",
+          email: user.email || "",
+          role: user.role || "",
+          status: user.status || "active",
+          school: user.school_id || "",
+          profile_image: user.profile_image || "",
+          unique_id: user.unique_id || "",
+          createdAt: user.created_at
+            ? new Date(user.created_at).toLocaleDateString()
+            : "",
+        };
+      });
       console.log("Transformed users:", transformedUsers);
       setUsers(transformedUsers);
     } catch (err) {
@@ -141,12 +147,19 @@ export default function AdminUsersPage() {
   const handleUpdateUser = async () => {
     if (!editingUser) return;
     try {
+      // Get image from form if user changed it (in preview)
+      const profileImageUrl = (formData as any).profile_preview || null;
+      // If not changed, keep existing
+      const finalProfileImage = profileImageUrl || editingUser.profile_image;
+      
+      console.log("[UPDATE] Sending profile_image:", finalProfileImage ? `base64(${finalProfileImage.substring(0, 30)}...)` : 'unchanged');
       console.log("Updating user:", editingUser);
       const response = await fetch(`${API_URL}/api/users/${editingUser.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...editingUser,
+          profile_image: finalProfileImage,
           id: parseInt(editingUser.id) // Ensure ID is sent as number
         }),
       });
@@ -175,27 +188,8 @@ export default function AdminUsersPage() {
     try {
       console.log("Creating user with data:", formData);
       
-      // Prepare the data to send to backend
-      // If an image was selected, upload it first and store the returned URL.
-      let profileImageUrl: string | null = null;
-      const file = (formData as any).profile_image_file as File | undefined;
-      if (file) {
-        const token = localStorage.getItem('token');
-        const fd = new FormData();
-        fd.append('file', file);
-
-        const upRes = await fetch(`${API_URL}/api/uploads/profile-image`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token || ''}` },
-          body: fd
-        });
-        const upBody = await upRes.json().catch(() => ({}));
-        if (!upRes.ok) {
-          throw new Error(upBody.error || upBody.message || 'Failed to upload profile image');
-        }
-        const url = upBody.url as string;
-        profileImageUrl = url?.startsWith('http') ? url : `${API_URL}${url}`;
-      }
+      // If an image was selected, use the base64 preview directly (simpler than file upload)
+      const profileImageUrl = (formData as any).profile_preview || null;
 
       const requestData = {
         name: formData.name,
@@ -203,13 +197,15 @@ export default function AdminUsersPage() {
         role: formData.role,
         password: formData.password,
         status: formData.status,
-        // Store URL (not base64) to avoid MySQL packet issues
+        // Store base64 directly as profile_image
         profile_image: profileImageUrl,
         // Only include school if it's not SUPER_ADMIN
         school_id: formData.role === "SUPER_ADMIN" ? null : formData.school,
         // For SCHOOL_ADMIN: specify which level they manage
-        admin_level: formData.role === "SCHOOL_ADMIN" ? (formData as any).admin_level : null
+        // Auto-use selectedSchoolType if admin_level is not set (for non-mixed schools)
+        admin_level: formData.role === "SCHOOL_ADMIN" ? ((formData as any).admin_level || (selectedSchoolType !== 'mixed' ? selectedSchoolType : null)) : null
       };
+      console.log('[CREATE REQUEST] Sending profile_image:', profileImageUrl ? `base64(${profileImageUrl.substring(0, 30)}...)` : 'null');
       
       console.log("Sending request data:", requestData);
       
@@ -286,6 +282,15 @@ export default function AdminUsersPage() {
   };
 
   useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        setCurrentUser(user);
+      } catch (e) {
+        console.error('Failed to parse user from localStorage', e);
+      }
+    }
     fetchUsers();
     fetchSchools();
   }, []);
@@ -328,15 +333,36 @@ export default function AdminUsersPage() {
               {users.map((user) => (
                 <tr key={user.id}>
                   <td>
-                    {user.profile_image ? (
-                      <img
-                        src={user.profile_image}
-                        alt={user.name}
-                        className="profile-thumb"
-                      />
-                    ) : (
-                      "-"
-                    )}
+                    <div className="profile-cell">
+                      {user.profile_image ? (
+                        <img
+                          src={user.profile_image || ''}
+                          alt={user.name}
+                          className="profile-thumb"
+                          style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '50%' }}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = '';
+                          }}
+                        />
+                      ) : (
+                        <div
+                          className="profile-placeholder"
+                          style={{
+                            width: '50px',
+                            height: '50px',
+                            borderRadius: '50%',
+                            backgroundColor: '#ddd',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '20px',
+                            color: '#666'
+                          }}
+                        >
+                          {user.name?.charAt(0)?.toUpperCase() || '?'}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td>{user.name}</td>
                   <td>
@@ -458,11 +484,40 @@ export default function AdminUsersPage() {
                     }
                   }}
                 >
-                  <option value="SUPER_ADMIN">Super Admin</option>
-                  <option value="SCHOOL_ADMIN">School Admin</option>
-                  <option value="TEACHER">Teacher</option>
-                  <option value="STUDENT">Student</option>
-                  <option value="PARENT"> Parent</option>
+                  {/* Dynamic role options based on current user's role per hierarchy: */}
+                  {/* Super Admin: only creates SCHOOL_ADMIN */}
+                  {currentUser?.role === 'SUPER_ADMIN' && (
+                    <>
+                      <option value="SCHOOL_ADMIN">School Admin</option>
+                    </>
+                  )}
+                  {/* School Admin: creates TEACHER, SECRETARY, ASSISTANT */}
+                  {currentUser?.role === 'SCHOOL_ADMIN' && (
+                    <>
+                      <option value="TEACHER">Teacher</option>
+                      <option value="SECRETARY">Secretary</option>
+                      <option value="ASSISTANT">Assistant</option>
+                    </>
+                  )}
+                  {/* Secretary: creates STUDENT, PARENT */}
+                  {currentUser?.role === 'SECRETARY' && (
+                    <>
+                      <option value="STUDENT">Student</option>
+                      <option value="PARENT">Parent</option>
+                    </>
+                  )}
+                  {/* Legacy: allow all roles if somehow accessed (backwards compatibility) */}
+                  {(!currentUser?.role || 
+                    (currentUser?.role !== 'SUPER_ADMIN' && currentUser?.role !== 'SCHOOL_ADMIN' && currentUser?.role !== 'SECRETARY')) && (
+                    <>
+                      <option value="TEACHER">Teacher</option>
+                      <option value="SECRETARY">Secretary</option>
+                      <option value="ASSISTANT">Assistant</option>
+                      <option value="SCHOOL_ADMIN">School Admin</option>
+                      <option value="STUDENT">Student</option>
+                      <option value="PARENT">Parent</option>
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -474,10 +529,13 @@ export default function AdminUsersPage() {
                     value={editingUser ? editingUser.school : formData.school}
                     onChange={(e) => {
                       const newSchool = e.target.value;
+                      const selectedSchool = schools.find(s => s.id === newSchool);
+                      const schoolType = selectedSchool?.school_type || "";
+                      setSelectedSchoolType(schoolType);
                       if (editingUser) {
-                        setEditingUser({ ...editingUser, school: newSchool });
+                        setEditingUser({ ...editingUser, school: newSchool } as any);
                       } else {
-                        setFormData({ ...formData, school: newSchool });
+                        setFormData({ ...formData, school: newSchool } as any);
                       }
                     }}
                     required={formData.role !== "SUPER_ADMIN"}
@@ -499,24 +557,57 @@ export default function AdminUsersPage() {
               {((editingUser?.role === "SCHOOL_ADMIN") || (formData.role === "SCHOOL_ADMIN")) && (
                 <div className="form-group">
                   <label>Admin Level</label>
-                  <select
-                    value={(editingUser as any)?.admin_level || (formData as any).admin_level || ''}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (editingUser) {
-                        setEditingUser({ ...(editingUser as any), admin_level: v } as any);
-                      } else {
-                        setFormData({ ...(formData as any), admin_level: v } as any);
-                      }
-                    }}
-                    required
-                  >
-                    <option value="">Select level</option>
-                    <option value="maternelle">Maternelle</option>
-                    <option value="primaire">Primaire</option>
-                    <option value="secondaire">Secondaire</option>
-                  </select>
-                  <small className="form-hint">Choose which level this school admin manages</small>
+                  {(selectedSchoolType && selectedSchoolType !== "mixed") ? (
+                    /* Auto-set for non-mixed schools - no selection needed */
+                    <div className="auto-level">
+                      <span className="auto-level-badge">{selectedSchoolType}</span>
+                      <small className="form-hint">
+                        This school is {selectedSchoolType} - admin will automatically manage {selectedSchoolType} level
+                      </small>
+                      {/* Hidden field to send the auto value */}
+                      <input 
+                        type="hidden" 
+                        name="admin_level" 
+                        value={selectedSchoolType} 
+                      />
+                    </div>
+                  ) : (
+                    /* Show dropdown for mixed schools or no school selected */
+                    <select
+                      value={(editingUser as any)?.admin_level || (formData as any).admin_level || ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (editingUser) {
+                          setEditingUser({ ...(editingUser as any), admin_level: v } as any);
+                        } else {
+                          setFormData({ ...(formData as any), admin_level: v } as any);
+                        }
+                      }}
+                      required={selectedSchoolType === "mixed"}
+                    >
+                      <option value="">Select level</option>
+                      {(selectedSchoolType === "" || selectedSchoolType === "mixed" || selectedSchoolType === "maternelle") && (
+                        <option value="maternelle">Maternelle</option>
+                      )}
+                      {(selectedSchoolType === "" || selectedSchoolType === "mixed" || selectedSchoolType === "primaire") && (
+                        <option value="primaire">Primaire</option>
+                      )}
+                      {(selectedSchoolType === "" || selectedSchoolType === "mixed" || selectedSchoolType === "secondaire") && (
+                        <option value="secondaire">Secondaire</option>
+                      )}
+                      {selectedSchoolType === "mixed" && (
+                        <option value="mixed">Mixed (All Levels)</option>
+                      )}
+                    </select>
+                  )}
+                  <small className="form-hint">
+                    {selectedSchoolType === "mixed" 
+                      ? "This is a mixed school - choose which level(s) this admin manages"
+                      : selectedSchoolType 
+                        ? `This school is ${selectedSchoolType} - admin will manage ${selectedSchoolType}`
+                        : "Select a school first to see available levels"
+                    }
+                  </small>
                 </div>
               )}
 
@@ -539,14 +630,31 @@ export default function AdminUsersPage() {
               {/* Profile Image */}
               <div className="form-group">
                 <label>Profile Image</label>
+                {(formData as any).profile_preview && (
+                  <div className="image-preview" style={{ marginBottom: 10 }}>
+                    <img 
+                      src={(formData as any).profile_preview} 
+                      alt="Preview" 
+                      style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover', border: '2px solid #ddd' }} 
+                    />
+                    <span style={{ marginLeft: 10, fontSize: 12, color: '#666' }}>Preview</span>
+                  </div>
+                )}
                 <input
                   type="file"
                   accept="image/*"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
-                    // Store the File object; it will be uploaded before creating the user.
-                    setFormData({ ...(formData as any), profile_image_file: file } as any);
+                    console.log('[IMG SELECTED] File:', file.name, file.size);
+                    // Create preview URL
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                      const result = ev.target?.result as string;
+                      console.log('[IMG PREVIEW] Base64 length:', result?.length);
+                      setFormData({ ...(formData as any), profile_image_file: file, profile_preview: result } as any);
+                    };
+                    reader.readAsDataURL(file);
                   }}
                 />
                 <small className="form-hint">Image will be uploaded and saved as a URL (recommended)</small>

@@ -18,6 +18,8 @@ type CourseItem = {
 
 type GradeConfig = {
   pass_percentage: number;
+  repech_percentage: number;
+  double_percentage: number;
   interro_weight: number;
   devoir_weight: number;
   examen_weight: number;
@@ -45,6 +47,8 @@ export default function SchoolGradesPage() {
   // Config
   const [config, setConfig] = useState<GradeConfig>({
     pass_percentage: 50,
+    repech_percentage: 45,
+    double_percentage: 55,
     interro_weight: 50,
     devoir_weight: 50,
     examen_weight: 0,
@@ -66,6 +70,9 @@ export default function SchoolGradesPage() {
   const [summaryPeriod, setSummaryPeriod] = useState(1);
   const [summaryData, setSummaryData] = useState<any>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
+  
+  // Submit bulletins
+  const [submittingBulletin, setSubmittingBulletin] = useState(false);
 
   // Tab
   const [activeTab, setActiveTab] = useState<"config" | "courses" | "results">("config");
@@ -249,6 +256,58 @@ export default function SchoolGradesPage() {
     }
   };
 
+  // Submit bulletins for class
+  const handleSubmitBulletin = async (sendToParents: boolean, sendToStudents: boolean) => {
+    if (!summaryClassId) {
+      alert("Veuillez sélectionner une classe d'abord");
+      return;
+    }
+    if (!currentUser?.school_id) {
+      alert("Erreur: ID de l'école non trouvé. Veuillez vous reconnecter.");
+      return;
+    }
+    setSubmittingBulletin(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        alert("Session expirée. Veuillez vous reconnecter.");
+        setSubmittingBulletin(false);
+        return;
+      }
+      
+      const schoolId = currentUser.school_id || currentUser?.schoolId || currentUser?.id_ecole;
+      console.log("Submitting bulletin for:", { class_id: summaryClassId, period: summaryPeriod, school_id: schoolId });
+      
+      const res = await fetch("/api/grades/submit-class-bulletin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          class_id: summaryClassId,
+          period: summaryPeriod,
+          school_id: schoolId,
+          send_to_parent: sendToParents,
+          send_to_student: sendToStudents,
+        }),
+      });
+      
+      const data = await res.json();
+      console.log("Response:", data);
+      
+      if (res.ok) {
+        setSuccess(`✅ Bulletins publiés! ${data.messages_sent || 0} messages envoyés.`);
+      } else {
+        throw new Error(data.error || "Erreur lors de la publication");
+      }
+    } catch (err: any) {
+      console.error("Bulletin error:", err);
+      setError(err.message || "Erreur inconnue");
+    } finally {
+      setSubmittingBulletin(false);
+    }
+  };
+
   const cardStyle: React.CSSProperties = {
     background: "#fff",
     border: "1px solid rgba(17,24,39,0.08)",
@@ -355,6 +414,36 @@ export default function SchoolGradesPage() {
 
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
+                  Seuil Repêotage (%)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={config.repech_percentage}
+                  onChange={(e) => setConfig({ ...config, repech_percentage: Number(e.target.value) })}
+                  style={inputStyle}
+                />
+                <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>Minimum pour repêotage (ex: 45%)</p>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
+                  Seuil Double (%)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={config.double_percentage}
+                  onChange={(e) => setConfig({ ...config, double_percentage: Number(e.target.value) })}
+                  style={inputStyle}
+                />
+                <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>Au-dessus de ce seuil = double (ex: 55%)</p>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
                   Poids des Interrogations (%)
                 </label>
                 <input
@@ -400,14 +489,19 @@ export default function SchoolGradesPage() {
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
                   Nombre de périodes
                 </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={4}
+                <select
                   value={config.max_periods}
                   onChange={(e) => setConfig({ ...config, max_periods: Number(e.target.value) })}
                   style={inputStyle}
-                />
+                >
+                  <option value={3}>3 (Primaire - Trimestres)</option>
+                  <option value={4}>4 (Secondaire - Semestres)</option>
+                  <option value={6}>6 (Primaire - P1, P2 par Trim.)</option>
+                  <option value={9}>9 (Primaire - P1, P2, EXAMEN par Trim.)</option>
+                </select>
+                <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+                  9 = 3 trimestres × (P1 + P2 + Examen)
+                </p>
               </div>
             </div>
 
@@ -577,18 +671,59 @@ export default function SchoolGradesPage() {
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Période</label>
                 <select
-                  style={{ ...inputStyle, width: 180, background: "#fff" }}
+                  style={{ ...inputStyle, width: 200, background: "#fff" }}
                   value={summaryPeriod}
                   onChange={(e) => setSummaryPeriod(Number(e.target.value))}
                 >
-                  <option value={1}>1ère Période (T1)</option>
-                  <option value={2}>2ème Période (T2)</option>
-                  <option value={3}>3ème Période (T3)</option>
+                  <optgroup label="Trimestre 1">
+                    <option value={1}>Période 1 (P1)</option>
+                    <option value={2}>Période 2 (P2)</option>
+                    <option value={3}>Examen T1</option>
+                  </optgroup>
+                  <optgroup label="Trimestre 2">
+                    <option value={4}>Période 4 (P4)</option>
+                    <option value={5}>Période 5 (P5)</option>
+                    <option value={6}>Examen T2</option>
+                  </optgroup>
+                  <optgroup label="Trimestre 3">
+                    <option value={7}>Période 7 (P7)</option>
+                    <option value={8}>Période 8 (P8)</option>
+                    <option value={9}>Examen T3</option>
+                  </optgroup>
+                  <optgroup label="Annuel">
+                    <option value={0}>Total Annuel</option>
+                  </optgroup>
                 </select>
               </div>
               <button style={btnPrimary} onClick={fetchClassSummary} disabled={!summaryClassId || loadingSummary}>
                 {loadingSummary ? "Chargement..." : "📊 Voir Résultats"}
               </button>
+              <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
+                <button
+                  style={{ ...btnPrimary, background: "linear-gradient(135deg, #059669, #047857)" }}
+                  onClick={() => { console.log("Click Parents", summaryClassId, summaryPeriod); handleSubmitBulletin(true, false); }}
+                  disabled={submittingBulletin || !summaryClassId}
+                  title="Envoyer uniquement aux parents"
+                >
+                  {submittingBulletin ? "..." : "👤 Parents"}
+                </button>
+                <button
+                  style={{ ...btnPrimary, background: "linear-gradient(135deg, #dc2626, #b91c1c)" }}
+                  onClick={() => handleSubmitBulletin(false, true)}
+                  disabled={submittingBulletin || !summaryClassId}
+                  title="Envoyer uniquement aux élèves"
+                >
+                  {submittingBulletin ? "..." : "👦 Élèves"}
+                </button>
+                <button
+                  style={{ ...btnPrimary, background: "linear-gradient(135deg, #7c3aed, #6d28d9)" }}
+                  onClick={() => handleSubmitBulletin(true, true)}
+                  disabled={submittingBulletin || !summaryClassId}
+                  title="Envoyer aux parents et aux élèves"
+                >
+                  {submittingBulletin ? "..." : "📤 Tous"}
+                </button>
+              </div>
             </div>
           </div>
 

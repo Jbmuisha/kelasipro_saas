@@ -12,6 +12,7 @@ type School = {
   email?: string;
   phone?: string;
   password?: string;
+  school_type?: string;
   created_at?: string;
 };
 
@@ -33,6 +34,7 @@ export default function AdminSchoolsPage() {
     name: "",
     email: "",
     phone: "",
+    school_type: "primaire",
     created_at: "",
   });
   const [editingSchool, setEditingSchool] = useState<School | null>(null);
@@ -50,7 +52,11 @@ export default function AdminSchoolsPage() {
     setError("");
     try {
       console.log("Attempting to fetch schools from:", `${API_URL}/api/schools`);
-      const response = await fetch(`${API_URL}/api/schools`);
+      const response = await fetch(`${API_URL}/api/schools`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+        }
+      });
       console.log("Response status:", response.status);
       console.log("Response ok:", response.ok);
       
@@ -79,6 +85,7 @@ export default function AdminSchoolsPage() {
       name: "",
       email: "",
       phone: "",
+      school_type: "primaire",
       created_at: "",
     });
   };
@@ -86,14 +93,22 @@ export default function AdminSchoolsPage() {
   // ================= CREATE SCHOOL =================
   const handleCreateSchool = async () => {
     try {
+      const token = localStorage.getItem('token') || '';
       const response = await fetch(`${API_URL}/api/schools`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify(formData),
       });
       
+      const data = await response.json();
+      
       if (!response.ok) {
-        throw new Error("Failed to create school");
+        console.error("Create school error:", data.error || data);
+        showToast(data.error || "Failed to create school. Please try again.", "error");
+        return;
       }
       
       fetchSchools();
@@ -109,9 +124,13 @@ export default function AdminSchoolsPage() {
   const handleUpdateSchool = async () => {
     if (!editingSchool) return;
     try {
+      const token = localStorage.getItem('token') || '';
       const response = await fetch(`${API_URL}/api/schools/${editingSchool.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify(editingSchool),
       });
       
@@ -135,18 +154,36 @@ export default function AdminSchoolsPage() {
       return;
     }
     
+    let response: Response | null = null;
     try {
-      const response = await fetch(`${API_URL}/api/schools/${id}`, { method: "DELETE" });
+      const token = localStorage.getItem('token') || '';
+      response = await fetch(`${API_URL}/api/schools/${id}`, { 
+        method: "DELETE",
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       
       if (!response.ok) {
-        throw new Error("Failed to delete school");
+        const errorText = await response.text();
+        console.error("Delete school response:", response.status, errorText);
+        throw new Error(errorText || "Failed to delete school");
       }
       
       fetchSchools();
       showToast("School deleted successfully!", "success");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Delete school error:", err);
-      showToast("Failed to delete school. Please try again.", "error");
+      let errorMsg = "Failed to delete school. Please check backend logs.";
+      try {
+        if (response && !response.ok) {
+          const errorText = await response.text();
+          errorMsg = errorText || errorMsg;
+        }
+      } catch (parseErr) {
+        console.error("Error parsing response:", parseErr);
+      }
+      showToast(errorMsg, "error");
     }
   };
 
@@ -264,7 +301,7 @@ export default function AdminSchoolsPage() {
             <div className="school-form">
               {/* Name */}
               <div className="form-group">
-                <label>School Name</label>
+                <label>School Name *</label>
                 <input
                   value={editingSchool ? editingSchool.name : formData.name}
                   onChange={(e) =>
@@ -273,52 +310,27 @@ export default function AdminSchoolsPage() {
                       : setFormData({ ...formData, name: e.target.value })
                   }
                   placeholder="Enter school name"
+                  required
                 />
               </div>
 
-              {/* Email */}
+              {/* School Type */}
               <div className="form-group">
-                <label>Email</label>
-                <input
-                  type="email"
-                  value={editingSchool ? editingSchool.email || "" : formData.email}
+                <label>School Type *</label>
+                <select
+                  value={editingSchool ? editingSchool.school_type || "primaire" : formData.school_type || "primaire"}
                   onChange={(e) =>
                     editingSchool
-                      ? setEditingSchool({ ...editingSchool, email: e.target.value })
-                      : setFormData({ ...formData, email: e.target.value })
+                      ? setEditingSchool({ ...editingSchool, school_type: e.target.value })
+                      : setFormData({ ...formData, school_type: e.target.value })
                   }
-                  placeholder="Enter school email"
-                />
-              </div>
-
-              {/* Phone */}
-              <div className="form-group">
-                <label>Phone</label>
-                <input
-                  type="tel"
-                  value={editingSchool ? editingSchool.phone || "" : formData.phone}
-                  onChange={(e) =>
-                    editingSchool
-                      ? setEditingSchool({ ...editingSchool, phone: e.target.value })
-                      : setFormData({ ...formData, phone: e.target.value })
-                  }
-                  placeholder="Enter school phone number"
-                />
-              </div>
-
-              {/* Password */}
-              <div className="form-group">
-                <label>Password</label>
-                <input
-                  type="password"
-                  value={editingSchool ? editingSchool.password || "" : formData.password || ""}
-                  onChange={(e) =>
-                    editingSchool
-                      ? setEditingSchool({ ...editingSchool, password: e.target.value })
-                      : setFormData({ ...formData, password: e.target.value })
-                  }
-                  placeholder={editingSchool ? "Leave blank to keep current password" : "Enter school password"}
-                />
+                  required
+                >
+                  <option value="primaire">Primaire</option>
+                  <option value="secondaire">Secondaire</option>
+                  <option value="maternelle">Maternelle</option>
+                  <option value="mixed">Mixed (All Types)</option>
+                </select>
               </div>
 
               {/* ACTIONS */}

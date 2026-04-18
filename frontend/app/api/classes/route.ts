@@ -21,3 +21,35 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Backend unreachable', detail: e.message, url }, { status: 502 });
   }
 }
+
+export async function POST(request: NextRequest) {
+  const url = `${BACKEND_URL}/api/classes`;
+
+  try {
+    const authHeader = request.headers.get('authorization') || '';
+    const body = await request.text();
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authHeader ? { Authorization: authHeader } : {}),
+      },
+      body,
+    });
+
+    const text = await res.text();
+
+    try {
+      const data = JSON.parse(text);
+      return NextResponse.json(data, { status: res.status });
+    } catch {
+      return new NextResponse(text, {
+        status: res.status,
+        headers: { 'Content-Type': res.headers.get('content-type') || 'text/plain' },
+      });
+    }
+  } catch (e: any) {
+    return NextResponse.json({ error: 'Backend unreachable', detail: e.message, url }, { status: 502 });
+  }
+}

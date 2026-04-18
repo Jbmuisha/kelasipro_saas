@@ -213,8 +213,14 @@ export default function StudentBulletinPage() {
                   <div style={{ fontSize: 16, fontWeight: 800, color: getMentionColor(bulletinData.mention) }}>{bulletinData.mention}</div>
                   <div style={{ fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Mention</div>
                 </div>
-                <div style={{ background: bulletinData.passed ? "#f0fdf4" : "#fef2f2", border: `2px solid ${bulletinData.passed ? "#bbf7d0" : "#fecaca"}`, borderRadius: 14, padding: "16px 24px", textAlign: "center", minWidth: 140 }}>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: bulletinData.passed ? "#166534" : "#991b1b" }}>{bulletinData.passed ? "✅ RÉUSSI" : "❌ ÉCHEC"}</div>
+                <div style={{ 
+                  background: bulletinData.decision === "Réussi" ? "#f0fdf4" : bulletinData.decision === "Repêchage" ? "#fffbeb" : "#fef2f2", 
+                  border: `2px solid ${bulletinData.decision === "Réussi" ? "#bbf7d0" : bulletinData.decision === "Repêchage" ? "#fde68a" : "#fecaca"}`, 
+                  borderRadius: 14, padding: "16px 24px", textAlign: "center", minWidth: 140 
+                }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: bulletinData.decision === "Réussi" ? "#166534" : bulletinData.decision === "Repêchage" ? "#92400e" : "#991b1b" }}>
+                    {bulletinData.decision === "Réussi" ? "✅ RÉUSSI" : bulletinData.decision === "Repêotage" ? "⚠️ REPÊCHAGE" : "❌ DOUBLE"}
+                  </div>
                   <div style={{ fontSize: 11, color: "#6b7280" }}>Seuil: {bulletinData.pass_percentage}%</div>
                 </div>
               </div>
@@ -244,8 +250,14 @@ export default function StudentBulletinPage() {
                   <div style={{ fontSize: 16, fontWeight: 800, color: getMentionColor(bulletinData.annual_mention) }}>{bulletinData.annual_mention}</div>
                   <div style={{ fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Mention</div>
                 </div>
-                <div style={{ background: bulletinData.passed ? "#f0fdf4" : "#fef2f2", border: `2px solid ${bulletinData.passed ? "#bbf7d0" : "#fecaca"}`, borderRadius: 14, padding: "16px 24px", textAlign: "center", minWidth: 160 }}>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: bulletinData.passed ? "#166534" : "#991b1b" }}>{bulletinData.passed ? "✅ RÉUSSI" : "❌ ÉCHEC"}</div>
+                <div style={{ 
+                  background: bulletinData.decision === "Réussi" ? "#f0fdf4" : bulletinData.decision === "Repêotage" ? "#fffbeb" : "#fef2f2", 
+                  border: `2px solid ${bulletinData.decision === "Réussi" ? "#bbf7d0" : bulletinData.decision === "Repêotage" ? "#fde68a" : "#fecaca"}`, 
+                  borderRadius: 14, padding: "16px 24px", textAlign: "center", minWidth: 160 
+                }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: bulletinData.decision === "Réussi" ? "#166534" : bulletinData.decision === "Repêotage" ? "#92400e" : "#991b1b" }}>
+                    {bulletinData.decision === "Réussi" ? "✅ RÉUSSI" : bulletinData.decision === "Repêotage" ? "⚠️ REPÊCHAGE" : "❌ DOUBLE"}
+                  </div>
                   <div style={{ fontSize: 11, color: "#6b7280" }}>Seuil: {bulletinData.pass_percentage}%</div>
                 </div>
               </div>

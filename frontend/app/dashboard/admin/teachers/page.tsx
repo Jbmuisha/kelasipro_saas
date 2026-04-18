@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 import '@/app/dashboard/admin/admin.css';
+import { setImpersonation, useAuth } from '@/utils/auth';
 
 type Teacher = {
   id: number;
@@ -11,6 +12,7 @@ type Teacher = {
 };
 
 export default function AdminTeachersPage() {
+  const { user } = useAuth();
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,11 +45,38 @@ export default function AdminTeachersPage() {
       {loading && <p>Loading...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {!loading && !error && (
-        <ul>
+        <div style={{ display: 'grid', gap: 12 }}>
           {teachers.map((t) => (
-            <li key={t.id}>{t.name} {t.email && `(${t.email})`}</li>
+            <div key={t.id} style={{ padding: 16, border: '1px solid #e5e7eb', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 600 }}>{t.name}</div>
+                {t.email && <div style={{ fontSize: 14, color: '#6b7280' }}>{t.email}</div>}
+              </div>
+              {user && (user.role === 'SCHOOL_ADMIN' || user.role === 'SUPER_ADMIN') ? (
+                <button
+                  onClick={async () => {
+                    if (confirm('Login as ' + t.name + '?')) {
+                      await setImpersonation({ id: t.id, role: t.role || 'TEACHER' });
+                    }
+                  }}
+                  style={{
+                    background: '#3b82f6',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '8px 16px',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 4px rgba(59,130,246,0.3)'
+                  }}
+                >
+                  👑 Login As
+                </button>
+              ) : null}
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );

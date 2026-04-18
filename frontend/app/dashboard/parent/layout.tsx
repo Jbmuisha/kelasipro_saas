@@ -126,6 +126,8 @@ export default function ParentLayout({
           localStorage.removeItem('user');
           localStorage.removeItem('school_id');
           localStorage.removeItem('school_type');
+          // Clear cookie to ensure clean logout
+          document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
           window.location.href = '/login';
         }} style={{ cursor: 'pointer' }}>
           <FaSignOutAlt /> {sidebarOpen && t.logout}

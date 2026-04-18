@@ -1,7 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+import { useEffect, useState, useCallback } from "react";
+import { useEffectiveUser } from "@/utils/auth";
 
 type StudentRow = {
   id: number;
@@ -14,7 +13,7 @@ type StudentRow = {
 };
 
 export default function TeacherStudentsPage() {
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [effectiveUser, effectiveLoading] = useEffectiveUser();
   const [classId, setClassId] = useState<number | null>(null);
   const [className, setClassName] = useState("");
   const [students, setStudents] = useState<StudentRow[]>([]);
@@ -22,41 +21,36 @@ export default function TeacherStudentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  useEffect(() => {
-    const userStr = localStorage.getItem("user");
-    if (userStr) setCurrentUser(JSON.parse(userStr));
-  }, []);
-
   // Find the teacher's class (where they are main_teacher)
-  const fetchClassInfo = async () => {
-    if (!currentUser?.id || !currentUser?.school_id) return;
+  const fetchClassInfo = useCallback(async () => {
+    if (effectiveLoading || !effectiveUser?.id || !effectiveUser?.school_id) return;
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/api/classes/?school_id=${currentUser.school_id}`, {
+      const res = await fetch(`/api/classes?school_id=${effectiveUser.school_id || 0}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Failed to load classes");
       const data = await res.json();
-      const cls = (data.classes || []).find((c: any) => c.main_teacher_id === currentUser.id);
+      const cls = (data.classes || []).find((c: any) => c.main_teacher_id === effectiveUser.id);
       if (cls) {
         setClassId(cls.id);
         setClassName(cls.name);
-      } else if (currentUser.class_id) {
-        const found = (data.classes || []).find((c: any) => c.id === currentUser.class_id);
+      } else if (effectiveUser.class_id) {
+        const found = (data.classes || []).find((c: any) => c.id === effectiveUser.class_id);
         if (found) { setClassId(found.id); setClassName(found.name); }
       }
     } catch (err: any) {
       setError(err.message);
     }
-  };
+  }, [effectiveLoading, effectiveUser]);
 
   // Fetch students in the class
   const fetchStudents = async () => {
-    if (!classId || !currentUser?.school_id) { setLoading(false); return; }
+    if (!classId || !effectiveUser?.school_id) { setLoading(false); return; }
     setLoading(true); setError(null);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/api/users/?school_id=${currentUser.school_id}`, {
+      const res = await fetch(`/api/users?school_id=${effectiveUser.school_id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Failed to load students");
@@ -80,8 +74,8 @@ export default function TeacherStudentsPage() {
   };
 
   useEffect(() => {
-    if (currentUser?.id) fetchClassInfo();
-  }, [currentUser]);
+    fetchClassInfo();
+  }, [fetchClassInfo]);
 
   useEffect(() => {
     if (classId) fetchStudents();
@@ -144,7 +138,7 @@ export default function TeacherStudentsPage() {
               style={{
                 width: "100%", maxWidth: 400, padding: "10px 14px",
                 border: "1px solid #d1d5db", borderRadius: 10, fontSize: 14,
-                boxSizing: "border-box",
+                boxSizing: "border-box" as const,
               }}
             />
           </div>
@@ -229,7 +223,7 @@ export default function TeacherStudentsPage() {
 
           {search && filtered.length === 0 && (
             <p style={{ color: "#9ca3af", textAlign: "center", marginTop: 20 }}>
-              Aucun élève trouvé pour &quot;{search}&quot;
+              Aucun élève trouvé pour "{search}"
             </p>
           )}
         </>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import "../../styles/login.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,11 +53,17 @@ export default function LoginPage() {
         setError(data.message || "Erreur lors de la connexion.");
         console.log(`[LOGIN FAILED] ${data.message || "Unknown error"}`);
       } else {
-        // Clear any previous session data
+        // Clear any previous session data - both localStorage and cookies
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         localStorage.removeItem("school_id");
         localStorage.removeItem("school_type");
+        localStorage.removeItem("impersonation");
+        localStorage.removeItem("admin_token_backup");
+        localStorage.removeItem("admin_user_backup");
+        
+        // Clear cookie to ensure clean authentication state
+        document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
 
         // Store new session data
         localStorage.setItem("token", data.token);
@@ -66,14 +73,19 @@ export default function LoginPage() {
           localStorage.setItem("school_id", String(data.user.school_id));
         }
 
-        // Store admin_level as school_type if available
-        if (data.user.admin_level) {
-          localStorage.setItem("school_type", data.user.admin_level);
-        }
+        // Always set school_type deterministically from the logged-in user.
+        // This prevents stale level from a previous session (primaire/secondaire/maternelle)
+        // from leaking into the new session.
+        const resolvedSchoolType =
+          (data.user.admin_level || data.user.school_type || "primaire").toLowerCase();
+        localStorage.setItem("school_type", resolvedSchoolType);
+
+        // CRITICAL: Set cookie for middleware
+        document.cookie = `token=${data.token}; path=/; SameSite=Strict; Secure=false`;
 
         console.log(`[LOGIN SUCCESS] User: ${identifier}, Role: ${data.user.role}`);
 
-        // Redirect based on role
+        // Respect middleware returnTo or fallback to role route
         const role = data.user.role;
         const routes: Record<string, string> = {
           SUPER_ADMIN: "/dashboard/admin",
@@ -85,8 +97,8 @@ export default function LoginPage() {
           ASSISTANT: "/dashboard/assistant",
         };
 
-        const destination = routes[role] || "/";
-        router.push(destination);
+        const returnTo = searchParams.get('returnTo') || routes[role] || '/';
+        router.push(decodeURIComponent(returnTo));
       }
     } catch (err) {
       console.error("[LOGIN ERROR]", err);
