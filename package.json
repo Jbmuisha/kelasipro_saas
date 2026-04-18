@@ -1,4 +1,14 @@
 {
+  "name": "kelasipro-saas",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev:server & npm run dev:frontend",
+    "dev:server": "cd server && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "install:all": "npm install && cd server && npm install && cd ../frontend && npm install",
+    "seed:superadmin": "cd server && node seed_super_admin.js"
+  },
   "dependencies": {
     "react-icons": "^5.5.0"
   }

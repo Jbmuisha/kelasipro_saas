@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 import '@/app/dashboard/school/school.css';
+import { setImpersonation } from "@/utils/auth";
 
 type ClassItem = {
   id: number;
@@ -641,7 +642,40 @@ function SecondaireCoursesView({
                   <td style={{ fontWeight: 'bold' }}>{c.name}</td>
                   <td style={{ color: '#666' }}>{c.description || '-'}</td>
                   <td>
-                    {c.teacher_name || (c.teacher_id ? `Teacher #${c.teacher_id}` : <span style={{ color: '#999', fontStyle: 'italic' }}>Not assigned</span>)}
+                    {c.teacher_name ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span>{c.teacher_name}</span>
+                        {c.teacher_id && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (confirm(`Login as ${c.teacher_name}?`)) {
+                                const userStr = localStorage.getItem('user');
+                                const user = userStr ? JSON.parse(userStr) : null;
+                                await setImpersonation({ id: c.teacher_id!, role: 'TEACHER', schoolType: user?.school_type });
+                              }
+                            }}
+                            style={{
+                              background: '#8b5cf6',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: 4,
+                              padding: '4px 8px',
+                              fontSize: 11,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              width: 'fit-content',
+                            }}
+                          >
+                            👑 Login As
+                          </button>
+                        )}
+                      </div>
+                    ) : c.teacher_id ? (
+                      <span>Teacher #{c.teacher_id}</span>
+                    ) : (
+                      <span style={{ color: '#999', fontStyle: 'italic' }}>Not assigned</span>
+                    )}
                   </td>
                   <td style={{ fontSize: 12 }}>
                     {c.classes && c.classes.length > 0

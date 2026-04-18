@@ -66,6 +66,21 @@ export const useEffectiveUser = () => {
   return [user, false] as const;
 };
 
+export const logout = async () => {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  localStorage.removeItem("school_id");
+  localStorage.removeItem("school_type");
+  localStorage.removeItem("impersonation");
+  localStorage.removeItem("admin_token_backup");
+  localStorage.removeItem("admin_user_backup");
+  
+  // Clear cookie to ensure clean logout
+  document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+  
+  window.location.href = "/login";
+};
+
 export const clearImpersonation = () => {
   const impersonation = localStorage.getItem('impersonation');
   const backupToken = localStorage.getItem('admin_token_backup');
@@ -90,14 +105,26 @@ export const clearImpersonation = () => {
 
 export const setImpersonation = async (teacherData: { id: number; role: string | undefined; schoolType?: string }) => {
   try {
-    const token = localStorage.getItem('token');
+    let token = localStorage.getItem('token');
+    if (!token) {
+      // Try to get admin token backup
+      token = localStorage.getItem('admin_token_backup');
+      console.log('[IMPERSONATE] Using admin_token_backup');
+    }
     if (!token) throw new Error('No admin token');
+
+    // Debug: Check current user role
+    const currentUserStr = localStorage.getItem('user');
+    const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
+    console.log('[IMPERSONATE DEBUG] Current user:', currentUser);
+    console.log('[IMPERSONATE DEBUG] Current user role:', currentUser?.role);
+    console.log('[IMPERSONATE DEBUG] Token exists:', !!token);
+    console.log('[IMPERSONATE DEBUG] Token (first 50 chars):', token?.substring(0, 50));
 
     // Save admin session before replacing it with impersonated session.
     if (!localStorage.getItem('admin_token_backup')) {
       localStorage.setItem('admin_token_backup', token);
     }
-    const currentUser = localStorage.getItem('user');
     if (currentUser && !localStorage.getItem('admin_user_backup')) {
       localStorage.setItem('admin_user_backup', currentUser);
     }
@@ -119,8 +146,8 @@ export const setImpersonation = async (teacherData: { id: number; role: string |
     localStorage.setItem('school_id', String(data.user.school_id || 0));
     localStorage.setItem('school_type', data.user.school_type || 'primaire');
 
-    const schoolTypePath = data.user.school_type ? `/${data.user.school_type.toLowerCase()}` : '';
-    window.location.href = `/dashboard${schoolTypePath}/teacher`;
+    // Navigate to teacher dashboard - always use /dashboard/teacher
+    window.location.href = '/dashboard/teacher';
   } catch (err: any) {
     alert(`Impersonation failed: ${err.message}`);
     console.error(err);

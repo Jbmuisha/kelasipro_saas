@@ -53,7 +53,7 @@ export default function LoginPage() {
         setError(data.message || "Erreur lors de la connexion.");
         console.log(`[LOGIN FAILED] ${data.message || "Unknown error"}`);
       } else {
-        // Clear any previous session data
+        // Clear any previous session data - both localStorage and cookies
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         localStorage.removeItem("school_id");
@@ -61,6 +61,9 @@ export default function LoginPage() {
         localStorage.removeItem("impersonation");
         localStorage.removeItem("admin_token_backup");
         localStorage.removeItem("admin_user_backup");
+        
+        // Clear cookie to ensure clean authentication state
+        document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
 
         // Store new session data
         localStorage.setItem("token", data.token);

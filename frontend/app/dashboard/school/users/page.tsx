@@ -406,9 +406,31 @@ export default function SchoolUsersPage() {
                     }
                   }}
                 >
-                  <option value="TEACHER">Teacher</option>
-                  <option value="SECRETARY">Secretary</option>
-                  <option value="ASSISTANT">Assistant</option>
+                  {/* School Admin: creates TEACHER, SECRETARY, ASSISTANT */}
+                  {currentUser?.role === 'SCHOOL_ADMIN' && (
+                    <>
+                      <option value="TEACHER">Teacher</option>
+                      <option value="SECRETARY">Secretary</option>
+                      <option value="ASSISTANT">Assistant</option>
+                    </>
+                  )}
+                  {/* Secretary: creates STUDENT, PARENT */}
+                  {currentUser?.role === 'SECRETARY' && (
+                    <>
+                      <option value="STUDENT">Student</option>
+                      <option value="PARENT">Parent</option>
+                    </>
+                  )}
+                  {/* Legacy/fallback */}
+                  {(!currentUser?.role || (currentUser?.role !== 'SCHOOL_ADMIN' && currentUser?.role !== 'SECRETARY')) && (
+                    <>
+                      <option value="TEACHER">Teacher</option>
+                      <option value="SECRETARY">Secretary</option>
+                      <option value="ASSISTANT">Assistant</option>
+                      <option value="STUDENT">Student</option>
+                      <option value="PARENT">Parent</option>
+                    </>
+                  )}
                 </select>
               </div>
 

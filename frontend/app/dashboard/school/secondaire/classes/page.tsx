@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import "../../classes/classes.css";
+import { setImpersonation } from "@/utils/auth";
 
 const Toast = ({ message, type, onClose }: { message: string; type: string; onClose: () => void }) => (
   <div className={`toast toast-${type}`}>
@@ -243,6 +244,31 @@ export default function SecondaireClassesPage() {
                 <button type="button" onClick={() => assignTeacherToClass(cls.id)} disabled={!!assigningByClass[cls.id]}>
                   {assigningByClass[cls.id] ? "Assigning..." : "Assigner"}
                 </button>
+                {/* Login As button for this teacher */}
+                {cls.main_teacher_id && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (confirm(`Login as ${cls.main_teacher_name}?`)) {
+                        await setImpersonation({ id: cls.main_teacher_id!, role: 'TEACHER', schoolType: currentUser?.school_type });
+                      }
+                    }}
+                    style={{
+                      marginTop: 6,
+                      background: '#8b5cf6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '6px 12px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      width: '100%',
+                    }}
+                  >
+                    👑 Login As
+                  </button>
+                )}
               </div>
 
               <div className="secondary-class-footer">Created: {cls.createdAt ? new Date(cls.createdAt).toLocaleString() : "-"}</div>

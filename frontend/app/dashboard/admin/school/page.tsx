@@ -103,8 +103,12 @@ export default function AdminSchoolsPage() {
         body: JSON.stringify(formData),
       });
       
+      const data = await response.json();
+      
       if (!response.ok) {
-        throw new Error("Failed to create school");
+        console.error("Create school error:", data.error || data);
+        showToast(data.error || "Failed to create school. Please try again.", "error");
+        return;
       }
       
       fetchSchools();
@@ -161,7 +165,9 @@ export default function AdminSchoolsPage() {
       });
       
       if (!response.ok) {
-        throw new Error("Failed to delete school");
+        const errorText = await response.text();
+        console.error("Delete school response:", response.status, errorText);
+        throw new Error(errorText || "Failed to delete school");
       }
       
       fetchSchools();

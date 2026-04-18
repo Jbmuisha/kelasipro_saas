@@ -10,6 +10,10 @@ export async function POST(
     const { teacherId } = await params;
     const authHeader = request.headers.get('authorization') || '';
 
+    console.log('[IMPERSONATE API] Teacher ID:', teacherId);
+    console.log('[IMPERSONATE API] Auth header exists:', !!authHeader);
+    console.log('[IMPERSONATE API] Auth header:', authHeader ? authHeader.substring(0, 50) : 'none');
+
     const res = await fetch(`${BACKEND_URL}/api/auth/admin/impersonate/${teacherId}`, {
       method: 'POST',
       headers: {
@@ -19,6 +23,9 @@ export async function POST(
     });
 
     const text = await res.text();
+    console.log('[IMPERSONATE API] Backend response status:', res.status);
+    console.log('[IMPERSONATE API] Backend response:', text.substring(0, 200));
+
     try {
       const data = JSON.parse(text);
       return NextResponse.json(data, { status: res.status });
