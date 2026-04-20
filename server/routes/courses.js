@@ -219,6 +219,24 @@ router.put('/:courseId/assign-teacher', requireAuth, requireAdmin, async (req, r
 
     if (error) throw error;
 
+    // Also link course to teacher's class in course_classes
+    if (teacher_id) {
+      // Find teacher's class
+      const { data: tc } = await supabaseAdmin
+        .from('teacher_classes')
+        .select('class_id')
+        .eq('teacher_id', teacher_id)
+        .single();
+      
+      if (tc?.class_id) {
+        // Add to course_classes
+        await supabaseAdmin.from('course_classes').upsert({
+          course_id: courseId,
+          class_id: tc.class_id
+        }, { onConflict: 'course_id,class_id' });
+      }
+    }
+
     res.json({ message: 'Teacher assigned to course successfully' });
 
   } catch (err) {

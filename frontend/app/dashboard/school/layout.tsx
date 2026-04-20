@@ -152,7 +152,7 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
       </button>
 
       <aside className="school-sidebar">
-        <div className="school-logo">📚 SP!K <span>School Admin</span></div>
+        <div className="school-logo"><i className="fa fa-school"></i> SP!K <span>School Admin</span></div>
 
         {/* School type selection removed: level is determined by login (SCHOOL_ADMIN.admin_level). */}
 
@@ -190,7 +190,7 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
         <header className="school-topbar">
           <div className="topbar-left">
             {!sidebarOpen && (
-              <div className="school-logo small">📚 SP!K <span>School Admin</span></div>
+              <div className="school-logo small"><i className="fa fa-school"></i> SP!K <span>School Admin</span></div>
             )}
             {!isMobile && <input type="text" placeholder={t.search} className="school-search" />}
           </div>

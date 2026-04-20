@@ -105,21 +105,27 @@ export const clearImpersonation = () => {
 
 export const setImpersonation = async (teacherData: { id: number; role: string | undefined; schoolType?: string }) => {
   try {
-    let token = localStorage.getItem('token');
+    // Check user role before attempting impersonation
+    const currentUserStr = localStorage.getItem('user');
+    const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
+    const userRole = currentUser?.role;
+    
+    // Only SCHOOL_ADMIN or SUPER_ADMIN can impersonate
+    if (userRole !== 'SCHOOL_ADMIN' && userRole !== 'SUPER_ADMIN') {
+      throw new Error('Only ADMIN users can impersonate teachers');
+    }
+
+    // Always use admin token backup for impersonation - the current token might be a teacher
+    let token = localStorage.getItem('admin_token_backup');
     if (!token) {
-      // Try to get admin token backup
-      token = localStorage.getItem('admin_token_backup');
-      console.log('[IMPERSONATE] Using admin_token_backup');
+      // Fallback to current token if no backup exists (first time impersonating)
+      token = localStorage.getItem('token');
     }
     if (!token) throw new Error('No admin token');
 
-    // Debug: Check current user role
-    const currentUserStr = localStorage.getItem('user');
-    const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
     console.log('[IMPERSONATE DEBUG] Current user:', currentUser);
-    console.log('[IMPERSONATE DEBUG] Current user role:', currentUser?.role);
+    console.log('[IMPERSONATE DEBUG] Current user role:', userRole);
     console.log('[IMPERSONATE DEBUG] Token exists:', !!token);
-    console.log('[IMPERSONATE DEBUG] Token (first 50 chars):', token?.substring(0, 50));
 
     // Save admin session before replacing it with impersonated session.
     if (!localStorage.getItem('admin_token_backup')) {
@@ -129,7 +135,12 @@ export const setImpersonation = async (teacherData: { id: number; role: string |
       localStorage.setItem('admin_user_backup', currentUser);
     }
 
-    const res = await fetch(`/api/auth/admin/impersonate/${teacherData.id}`, {
+    // Use different endpoint based on user role
+    const endpoint = (userRole === 'SUPER_ADMIN') 
+      ? `/api/auth/admin/impersonate/${teacherData.id}` 
+      : `/api/auth/school/impersonate/${teacherData.id}`;
+    
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     });
@@ -146,8 +157,8 @@ export const setImpersonation = async (teacherData: { id: number; role: string |
     localStorage.setItem('school_id', String(data.user.school_id || 0));
     localStorage.setItem('school_type', data.user.school_type || 'primaire');
 
-    // Navigate to teacher dashboard - always use /dashboard/teacher
-    window.location.href = '/dashboard/teacher';
+    // Navigate back to school admin dashboard
+    window.location.href = '/dashboard/school';
   } catch (err: any) {
     alert(`Impersonation failed: ${err.message}`);
     console.error(err);

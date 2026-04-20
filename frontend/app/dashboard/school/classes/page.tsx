@@ -20,9 +20,9 @@ interface TeacherOption {
 }
 
 const LEVELS = [
-  { key: "maternelle", label: "Maternelle", icon: "👶", classes: ["1ere maternelle", "2eme maternelle", "3eme maternelle"] },
-  { key: "primaire", label: "Primaire", icon: "📚", classes: ["1ere primaire", "2eme primaire", "3eme primaire", "4eme primaire", "5eme primaire", "6eme primaire"] },
-  { key: "secondaire", label: "Secondaire", icon: "🎓", classes: ["7eme secondaire", "8eme secondaire", "1ere secondaire", "2eme secondaire", "3eme secondaire", "4eme secondaire"] },
+  { key: "maternelle", label: "Maternelle", icon: <i className="fa fa-child"></i>, classes: ["1ere maternelle", "2eme maternelle", "3eme maternelle"] },
+  { key: "primaire", label: "Primaire", icon: <i className="fa fa-book"></i>, classes: ["1ere primaire", "2eme primaire", "3eme primaire", "4eme primaire", "5eme primaire", "6eme primaire"] },
+  { key: "secondaire", label: "Secondaire", icon: <i className="fa fa-graduation-cap"></i>, classes: ["7eme secondaire", "8eme secondaire", "1ere secondaire", "2eme secondaire", "3eme secondaire", "4eme secondaire"] },
 ];
 
 export default function ClassesPage() {
@@ -60,6 +60,24 @@ export default function ClassesPage() {
 
   const fetchClasses = useCallback(async (level: string) => {
     if (!schoolId) return;
+    
+    // Skip fetch if user doesn't have access to this level
+    if (userAdminLevel) {
+      const myLevel = userAdminLevel.toLowerCase();
+      const targetLevel = level.toLowerCase();
+      const isMixed = myLevel === "mixed" || myLevel === "mixte";
+      const hasAccess = isMixed || 
+        (myLevel === "primaire" && targetLevel === "primaire") ||
+        (myLevel === "maternelle" && targetLevel === "maternelle") ||
+        (myLevel === "secondaire" && targetLevel === "secondaire");
+      
+      if (!hasAccess) {
+        setClasses([]);
+        setLoading(false);
+        return;
+      }
+    }
+    
     setLoading(true);
     setError(null);
     try {
@@ -67,6 +85,15 @@ export default function ClassesPage() {
       const data = await apiGet(`/classes?${params}`);
       const fetchedClasses = data.classes || [];
       setClasses(fetchedClasses);
+      
+      // Initialize selectedTeacherByClass with existing assignments
+      const initialSelection: Record<number, string> = {};
+      fetchedClasses.forEach((cls: any) => {
+        if (cls.main_teacher_id) {
+          initialSelection[cls.id] = String(cls.main_teacher_id);
+        }
+      });
+      setSelectedTeacherByClass(initialSelection);
       if (data.debug?.count === 0) {
         setError(`No ${level} classes. Create first!`);
       }
@@ -76,7 +103,7 @@ export default function ClassesPage() {
     } finally {
       setLoading(false);
     }
-  }, [schoolId]);
+  }, [schoolId, userAdminLevel]);
 
   const fetchTeachers = useCallback(async () => {
     if (!schoolId) return;
@@ -92,11 +119,12 @@ export default function ClassesPage() {
   }, [schoolId]);
 
   useEffect(() => {
+    // Fetch regardless of userAdminLevel - the fetchClasses function will handle access control
     if (schoolId) {
       fetchClasses(activeType);
       fetchTeachers();
     }
-  }, [schoolId, activeType, fetchClasses, fetchTeachers]);
+  }, [schoolId, userAdminLevel, activeType, fetchClasses, fetchTeachers]);
 
   useEffect(() => {
     if (!userAdminLevel || !activeType) return;
@@ -242,16 +270,30 @@ export default function ClassesPage() {
       ) : filteredClasses.length === 0 ? (
         <div className="classes-empty">
           <h3>No classes yet</h3>
-          <p>Select a base class and suffix (A, B...) to create.</p>
-          <button onClick={() => setShowCreateModal(true)} className="btn-primary">Create First Class</button>
+          {!accessDenied ? (
+            <>
+              <p>Select a base class and suffix (A, B...) to create.</p>
+              <button onClick={() => setShowCreateModal(true)} className="btn-primary">Create First Class</button>
+            </>
+          ) : (
+            <p>You don't have access to this section.</p>
+          )}
         </div>
       ) : (
         <div className="classes-grid">
           {filteredClasses.map(cls => (
             <div key={cls.id} className="class-card">
-              <h3>{cls.name}</h3>
-              {cls.main_teacher_name && (
-                <p><strong>Main Teacher:</strong> {cls.main_teacher_name}</p>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span>{cls.name}</span>
+                {(cls.main_teacher_name || selectedTeacherByClass[cls.id]) && (
+                  <span style={{ background: '#dbeafe', color: '#1e40af', padding: '2px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 500, marginLeft: 'auto' }}>
+                    <i className="fa fa-user" style={{ marginRight: '4px' }}></i>
+                    {selectedTeacherByClass[cls.id] ? teachers.find(t => t.id === Number(selectedTeacherByClass[cls.id]))?.name || '...' : cls.main_teacher_name}
+                  </span>
+                )}
+              </h3>
+              {!cls.main_teacher_name && (
+                <p style={{ color: '#9ca3af', fontSize: '13px', marginTop: '-8px', marginBottom: '12px' }}><i className="fa fa-user-plus" style={{marginRight:'4px'}}></i>No teacher assigned</p>
               )}
               <div className="card-actions">
                 <select
@@ -260,7 +302,7 @@ export default function ClassesPage() {
                     setSelectedTeacherByClass((prev) => ({ ...prev, [cls.id]: e.target.value }))
                   }
                 >
-                  <option value="">Assign principale...</option>
+                  <option value="">-- Select Teacher --</option>
                   {teachers.map((t) => (
                     <option key={t.id} value={String(t.id)}>{t.name}</option>
                   ))}

@@ -129,6 +129,7 @@ router.post('/logout', requireAuth, (req, res) => {
 });
 
 // ================= IMPERSONATE =================
+// Route for SUPER_ADMIN only (existing)
 router.post('/admin/impersonate/:teacherId', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const { teacherId } = req.params;
@@ -144,6 +145,65 @@ router.post('/admin/impersonate/:teacherId', requireAuth, requireSuperAdmin, asy
       .eq('id', teacherId)
       .in('role', ['TEACHER', 'ASSISTANT'])
       .limit(1);
+
+    if (error) throw error;
+
+    if (!teachers || teachers.length === 0) {
+      return res.status(404).json({ error: 'Teacher not found or access denied' });
+    }
+
+    const teacher = teachers[0];
+
+    // Generate JWT with teacher's payload
+    const payload = {
+      id: teacher.id,
+      role: teacher.role,
+      school_id: teacher.school_id,
+      school_type: teacher.school_type
+    };
+
+    const token = jwt.sign(payload, JWT_SECRET, { algorithm: 'HS256' });
+
+    console.log('[IMPERSONATE]', requester.role, requester.id, 'impersonating teacher', teacher.id);
+
+    const safeUser = {
+      id: teacher.id,
+      name: teacher.name,
+      email: teacher.email,
+      role: teacher.role,
+      school_id: teacher.school_id,
+      school_type: teacher.school_type,
+      unique_id: teacher.unique_id,
+      profile_image: teacher.profile_image
+    };
+
+    res.json({ token, user: safeUser });
+  } catch (err) {
+    console.error('[IMPERSONATE ERROR]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Route for SCHOOL_ADMIN (limited - their own school only)
+router.post('/school/impersonate/:teacherId', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { teacherId } = req.params;
+    const requester = req.requester;
+    const teacherIdNum = parseInt(teacherId, 10);
+
+    console.log('[IMPERSONATE] Requester:', requester);
+    console.log('[IMPERSONATE] Target teacher ID:', teacherIdNum);
+
+    // Get teacher (filter by role and school)
+    const { data: teachers, error } = await supabaseAdmin
+      .from('users')
+      .select('*')
+      .eq('id', teacherIdNum)
+      .in('role', ['TEACHER', 'ASSISTANT'])
+      .limit(1);
+
+    console.log('[IMPERSONATE] Query for teacher id:', teacherIdNum);
+    console.log('[IMPERSONATE] Teachers found:', teachers?.length || 0);
 
     if (error) throw error;
 
