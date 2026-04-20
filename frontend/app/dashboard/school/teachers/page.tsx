@@ -1,8 +1,9 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { setImpersonation } from '@/utils/auth';
+import { useAuth, setImpersonation, clearImpersonation } from '@/utils/auth';
 import '@/app/dashboard/school/school.css';
+
 
 type TeacherListItem = {
   id: number;
@@ -32,14 +33,20 @@ export default function SchoolTeachersPage() {
   const [assignCoursesByTeacher, setAssignCoursesByTeacher] = useState<Record<number, number[]>>({});
   const [assigningByTeacher, setAssigningByTeacher] = useState<Record<number, boolean>>({});
 
+  const { user } = useAuth();
+  
   const getSchoolId = () => {
-    try {
-      const userStr = localStorage.getItem('user');
-      const u = userStr ? JSON.parse(userStr) : null;
-      if (u?.school_id) return String(u.school_id);
-    } catch {}
+    if (user?.school_id) return String(user.school_id);
     return localStorage.getItem('school_id') || null;
   };
+
+  // Auto-clear stale impersonation sessions
+  useEffect(() => {
+    if (user?.role !== 'SCHOOL_ADMIN' && user?.role !== 'SUPER_ADMIN' && localStorage.getItem('impersonation')) {
+      clearImpersonation();
+    }
+  }, [user]);
+
 
   const fetchTeachers = async () => {
     setLoading(true);
@@ -247,25 +254,33 @@ export default function SchoolTeachersPage() {
                   <td style={{ padding: '12px 16px' }}>
                     {t.role === 'TEACHER' ? (
                       <>
-                        <button
-                          onClick={async () => setImpersonation({ id: t.id, role: t.role })}
-                          style={{
-                            background: '#3b82f6',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: 8,
-                            padding: '8px 16px',
-                            fontSize: 13,
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            marginBottom: 8,
-                            width: '100%',
-                            boxShadow: '0 2px 4px rgba(59,130,246,0.3)'
-                          }}
-                          title="Login as this teacher (admin only)"
-                        >
-                          👑 Login As
-                        </button>
+                        {user?.role === 'SCHOOL_ADMIN' || user?.role === 'SUPER_ADMIN' ? (
+                          <button
+                            onClick={async () => setImpersonation({ id: t.id, role: t.role })}
+                            style={{
+                              background: '#3b82f6',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: 8,
+                              padding: '8px 16px',
+                              fontSize: 13,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              marginBottom: 8,
+                              width: '100%',
+                              boxShadow: '0 2px 4px rgba(59,130,246,0.3)'
+                            }}
+                            title="Login as this teacher (admin only)"
+                          >
+                            👑 Login As
+                          </button>
+                        ) : (
+                          <button disabled style={{ opacity: 0.5, cursor: 'not-allowed', background: '#9ca3af', width: '100%', borderRadius: 8, padding: '8px 16px', fontSize: 13, border: 'none' }}>
+                            Impersonate (Admin Only)
+                          </button>
+                        )}
+
+
                         <div style={{ maxHeight: 120, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
                           {schoolCourses.length === 0 ? (
                             <span style={{ fontSize: 13, color: '#9ca3af' }}>No courses available</span>

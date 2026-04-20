@@ -110,8 +110,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
 
   const handleBackToAdmin = () => {
     clearImpersonation();
-    window.location.href = '/dashboard/school';
   };
+
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -261,8 +261,10 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 <p>{effectiveUser?.role === 'TEACHER' ? t.teacher : 'Assistant'}</p>
               </div>
             </div>
+
           </div>
         </header>
+
 
         <main className="teacher-content">{children}</main>
       </div>

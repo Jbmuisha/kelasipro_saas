@@ -190,9 +190,18 @@ router.post('/school/impersonate/:teacherId', requireAuth, requireAdmin, async (
     const { teacherId } = req.params;
     const requester = req.requester;
     const teacherIdNum = parseInt(teacherId, 10);
+    const searchRole = 'TEACHER';
 
     console.log('[IMPERSONATE] Requester:', requester);
-    console.log('[IMPERSONATE] Target teacher ID:', teacherIdNum);
+    console.log('[IMPERSONATE] Target teacher ID:', teacherId, '->', teacherIdNum);
+    
+    // Debug: Get all teachers to see what's available
+    const { data: allTeachers } = await supabaseAdmin
+      .from('users')
+      .select('id, name, role, school_id')
+      .in('role', ['TEACHER', 'ASSISTANT'])
+      .limit(10);
+    console.log('[DEBUG] All teachers:', allTeachers);
 
     // Get teacher (filter by role and school)
     const { data: teachers, error } = await supabaseAdmin

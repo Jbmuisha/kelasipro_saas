@@ -93,15 +93,22 @@ export const clearImpersonation = () => {
       localStorage.setItem('user', backupUser);
       localStorage.setItem('school_id', String(adminUser?.school_id || 0));
       localStorage.setItem('school_type', adminUser?.school_type || 'primaire');
+      
+      // Redirect to admin dashboard after restoring session
+      window.location.href = adminUser.role === 'SUPER_ADMIN' ? '/dashboard/admin' : '/dashboard/school';
+      return; // Exit early
     } catch {
       // ignore parse errors and just clear backups below
     }
   }
 
+  // Fallback: full logout if no valid backup
   localStorage.removeItem('impersonation');
   localStorage.removeItem('admin_token_backup');
   localStorage.removeItem('admin_user_backup');
+  window.location.href = '/login';
 };
+
 
 export const setImpersonation = async (teacherData: { id: number; role: string | undefined; schoolType?: string }) => {
   try {
@@ -157,10 +164,20 @@ export const setImpersonation = async (teacherData: { id: number; role: string |
     localStorage.setItem('school_id', String(data.user.school_id || 0));
     localStorage.setItem('school_type', data.user.school_type || 'primaire');
 
-    // Navigate back to school admin dashboard
-    window.location.href = '/dashboard/school';
+    // Navigate to role-appropriate dashboard
+    const rolePaths: Record<string, string> = {
+      'TEACHER': '/dashboard/teacher',
+      'STUDENT': '/dashboard/student',
+      'PARENT': '/dashboard/parent', 
+      'SECRETARY': '/dashboard/secretary',
+      'SCHOOL_ADMIN': '/dashboard/school',
+      'SUPER_ADMIN': '/dashboard/admin'
+    };
+    const rolePath = rolePaths[data.user.role] || '/dashboard';
+    window.location.href = rolePath;
   } catch (err: any) {
     alert(`Impersonation failed: ${err.message}`);
     console.error(err);
   }
 };
+
