@@ -11,12 +11,20 @@ router.get('/', requireAuth, async (req, res) => {
 
     let query = supabaseAdmin
       .from('courses')
-      .select('*, teacher:users(*), school:schools(*)');
+      .select('*');
 
-    if (requester.role === 'SCHOOL_ADMIN') {
+    // Debug: Show requester info
+    console.log('[COURSES] requester role:', requester?.role, ', school_id:', requester?.school_id);
+    
+    if (requester.role === 'SCHOOL_ADMIN' && requester.school_id) {
       query = query.eq('school_id', requester.school_id);
     } else if (school_id) {
       query = query.eq('school_id', school_id);
+    }
+    
+    // Debug: Allow debug_mode to bypass filter
+    if (req.query.debug === 'all') {
+      query = supabaseAdmin.from('courses').select('*');
     }
 
     const { data, error } = await query.order('name');
@@ -37,7 +45,7 @@ router.get('/:courseId', requireAuth, async (req, res) => {
 
     const { data, error } = await supabaseAdmin
       .from('courses')
-      .select('*, teacher:users(*), school:schools(*), course_classes(class:classes(*))')
+      .select('*')
       .eq('id', courseId)
       .single();
 
@@ -53,20 +61,22 @@ router.get('/:courseId', requireAuth, async (req, res) => {
 });
 
 // ================= CREATE COURSE =================
-router.post('/', requireAdmin, async (req, res) => {
+router.post('/', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, school_id, teacher_id, description } = req.body;
+    const { name, school_id, teacher_id, description, classes } = req.body;
     const requester = req.requester;
 
     if (requester.role === 'SCHOOL_ADMIN' && school_id !== requester.school_id) {
       return res.status(403).json({ error: 'Cannot create courses for other schools' });
     }
 
+    const finalSchoolId = school_id || requester.school_id;
+
     const { data, error } = await supabaseAdmin
       .from('courses')
       .insert({
         name,
-        school_id: school_id || requester.school_id,
+        school_id: finalSchoolId,
         teacher_id: teacher_id || null,
         description: description || null
       })
@@ -74,6 +84,25 @@ router.post('/', requireAdmin, async (req, res) => {
       .single();
 
     if (error) throw error;
+
+    const courseId = data.id;
+
+    // Link course to classes via course_classes table
+    if (classes && Array.isArray(classes) && classes.length > 0) {
+      const classLinks = classes.map((classId) => ({
+        course_id: courseId,
+        class_id: classId
+      }));
+
+      const { error: linkError } = await supabaseAdmin
+        .from('course_classes')
+        .upsert(classLinks, { onConflict: 'course_id,class_id' });
+
+      if (linkError) {
+        console.error('[COURSE_CLASSES LINK ERROR]', linkError.message);
+        // Don't fail the whole request, just log the error
+      }
+    }
 
     res.json({ message: 'Course created successfully', course: data });
 
@@ -84,7 +113,7 @@ router.post('/', requireAdmin, async (req, res) => {
 });
 
 // ================= UPDATE COURSE =================
-router.put('/:courseId', requireAdmin, async (req, res) => {
+router.put('/:courseId', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { courseId } = req.params;
     const { name, teacher_id, description } = req.body;
@@ -125,7 +154,7 @@ router.put('/:courseId', requireAdmin, async (req, res) => {
 });
 
 // ================= DELETE COURSE =================
-router.delete('/:courseId', requireAdmin, async (req, res) => {
+router.delete('/:courseId', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { courseId } = req.params;
     const requester = req.requester;
@@ -159,7 +188,7 @@ router.delete('/:courseId', requireAdmin, async (req, res) => {
 });
 
 // ================= ASSIGN TEACHER TO COURSE =================
-router.post('/:courseId/assign-teacher', requireAdmin, async (req, res) => {
+router.put('/:courseId/assign-teacher', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { courseId } = req.params;
     const { teacher_id } = req.body;
@@ -194,6 +223,67 @@ router.post('/:courseId/assign-teacher', requireAdmin, async (req, res) => {
 
   } catch (err) {
     console.error('[ASSIGN TEACHER TO COURSE ERROR]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ================= LINK ALL COURSES TO CLASSES (AUTO-FIX) =================
+router.post('/auto-link-classes', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const requester = req.requester;
+    const schoolId = requester.school_id;
+    
+    // Get all classes for this school
+    const { data: classes } = await supabaseAdmin
+      .from('classes')
+      .select('id')
+      .eq('school_id', schoolId);
+    
+    // Get all courses for this school
+    const { data: courses } = await supabaseAdmin
+      .from('courses')
+      .select('id, teacher_id')
+      .eq('school_id', schoolId);
+    
+    if (!classes || classes.length === 0) {
+      return res.json({ message: 'No classes found' });
+    }
+    if (!courses || courses.length === 0) {
+      return res.json({ message: 'No courses found' });
+    }
+    
+    // Link each course to its class based on teacher assignment
+    // For courses with a teacher, find that teacher's class and link
+    for (const course of courses) {
+      let classId = null;
+      
+      // If course has teacher, find teacher's assigned class
+      if (course.teacher_id) {
+        const { data: tc } = await supabaseAdmin
+          .from('teacher_classes')
+          .select('class_id')
+          .eq('teacher_id', course.teacher_id)
+          .single();
+        if (tc) classId = tc.class_id;
+      }
+      
+      // Fallback: use first class for this school
+      if (!classId && classes.length > 0) {
+        classId = classes[0].id;
+      }
+      
+      // Link it
+      if (classId) {
+        await supabaseAdmin.from('course_classes').upsert({
+          course_id: course.id,
+          class_id: classId
+        }, { onConflict: 'course_id,class_id' });
+      }
+    }
+    
+    res.json({ message: `Linked ${courses.length} courses to classes` });
+  } catch (err) {
+    console.error('[AUTO-LINK ERROR]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

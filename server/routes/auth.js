@@ -129,7 +129,7 @@ router.post('/logout', requireAuth, (req, res) => {
 });
 
 // ================= IMPERSONATE =================
-router.post('/admin/impersonate/:teacherId', requireAdmin, async (req, res) => {
+router.post('/admin/impersonate/:teacherId', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const { teacherId } = req.params;
     const requester = req.requester;

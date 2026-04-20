@@ -91,6 +91,15 @@ const requireSuperAdmin = (req, res, next) => {
  * Middleware to require SCHOOL_ADMIN or SUPER_ADMIN role
  */
 const requireAdmin = (req, res, next) => {
+  // First ensure we have a valid requester
+  if (!req.requester) {
+    return res.status(401).json({ error: 'Invalid token - no requester' });
+  }
+  
+  if (!req.requester.role) {
+    return res.status(401).json({ error: 'Invalid token - no role' });
+  }
+  
   if (!['SCHOOL_ADMIN', 'SUPER_ADMIN'].includes(req.requester.role)) {
     return res.status(403).json({ 
       error: `Only SCHOOL_ADMIN or SUPER_ADMIN can perform this action (got: ${req.requester.role})` 

@@ -53,14 +53,36 @@ router.get('/:schoolId/teacher-courses', async (req, res) => {
     const requester = req.requester;
 
     // Get courses for the school
-    const { data: courses, error } = await supabaseAdmin
+    let coursesQuery = supabaseAdmin
       .from('courses')
       .select('*, teacher:users(*)')
       .eq('school_id', schoolId);
+    
+    // Debug bypass
+    if (req.query.debug === 'all') {
+      coursesQuery = supabaseAdmin.from('courses').select('*, teacher:users(*)');
+    }
+    
+    const { data: courses, error } = await coursesQuery;
 
     if (error) throw error;
 
-    res.json({ courses });
+    // For each course, get the linked classes
+    const coursesWithClasses = await Promise.all(
+      (courses || []).map(async (course) => {
+        const { data: cc } = await supabaseAdmin
+          .from('course_classes')
+          .select('*, class:classes(id, name)')
+          .eq('course_id', course.id);
+
+        return {
+          ...course,
+          classes: cc || []
+        };
+      })
+    );
+
+    res.json({ courses: coursesWithClasses });
 
   } catch (err) {
     console.error('[GET TEACHER COURSES ERROR]', err.message);
@@ -103,7 +125,7 @@ router.post('/', async (req, res) => {
 });
 
 // ================= UPDATE SCHOOL =================
-router.put('/:schoolId', requireAdmin, async (req, res) => {
+router.put('/:schoolId', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
     const { schoolId } = req.params;
     const { name, address, phone, email, school_type } = req.body;
