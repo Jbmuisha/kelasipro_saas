@@ -12,7 +12,7 @@ router.get('/', requireAuth, async (req, res) => {
 
     let query = supabaseAdmin
       .from('users')
-      .select('*, school:schools(*), class:class_id(*)')
+      .select('*')
       .in('role', ['TEACHER', 'ASSISTANT']);
 
     if (requester.role === 'SCHOOL_ADMIN') {
@@ -23,6 +23,22 @@ router.get('/', requireAuth, async (req, res) => {
 
     const { data, error } = await query.order('name');
     if (error) throw error;
+
+    // Get courses for each teacher
+    if (data && data.length > 0) {
+      const teacherIds = data.map(t => t.id);
+      const { data: courseLinks } = await supabaseAdmin
+        .from('courses')
+        .select('id, name, teacher_id')
+        .in('teacher_id', teacherIds);
+      
+      // Attach courses to each teacher
+      data.forEach(teacher => {
+        teacher.courses = (courseLinks || [])
+          .filter(c => c.teacher_id === teacher.id)
+          .map(c => ({ id: c.id, name: c.name }));
+      });
+    }
 
     res.json({ teachers: data });
 
@@ -39,7 +55,7 @@ router.get('/:teacherId', requireAuth, async (req, res) => {
 
     const { data, error } = await supabaseAdmin
       .from('users')
-      .select('*, school:schools(*), class:class_id(*)')
+      .select('*')
       .eq('id', teacherId)
       .in('role', ['TEACHER', 'ASSISTANT'])
       .single();
@@ -56,7 +72,7 @@ router.get('/:teacherId', requireAuth, async (req, res) => {
 });
 
 // ================= CREATE TEACHER =================
-router.post('/', requireAdmin, async (req, res) => {
+router.post('/', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { name, email, password, school_id, class_id, profile_image } = req.body;
     const requester = req.requester;
@@ -97,7 +113,7 @@ router.post('/', requireAdmin, async (req, res) => {
 });
 
 // ================= UPDATE TEACHER =================
-router.put('/:teacherId', requireAdmin, async (req, res) => {
+router.put('/:teacherId', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { teacherId } = req.params;
     const { name, email, school_id, class_id, profile_image } = req.body;
@@ -140,7 +156,7 @@ router.put('/:teacherId', requireAdmin, async (req, res) => {
 });
 
 // ================= DELETE TEACHER =================
-router.delete('/:teacherId', requireAdmin, async (req, res) => {
+router.delete('/:teacherId', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { teacherId } = req.params;
     const requester = req.requester;
@@ -180,7 +196,7 @@ router.get('/:teacherId/courses', requireAuth, async (req, res) => {
 
     const { data, error } = await supabaseAdmin
       .from('courses')
-      .select('*, school:schools(*), class:course_classes(class:classes(*))')
+      .select('*')
       .eq('teacher_id', teacherId);
 
     if (error) throw error;

@@ -23,6 +23,10 @@ import { io, Socket } from 'socket.io-client';
 import { useEffectiveUser, clearImpersonation, logout } from "@/utils/auth";
 import "@/app/dashboard/teacher/teacher.css";
 
+const isImpersonating = () => {
+  return typeof window !== 'undefined' && !!localStorage.getItem('impersonation');
+};
+
 const translations = {
   fr: {
     dashboard: "Tableau de bord",
@@ -77,6 +81,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [language, setLanguage] = useState<'fr' | 'en'>('fr');
+  const [isImpersonated, setIsImpersonated] = useState(false);
   const [effectiveUser, effectiveLoading] = useEffectiveUser();
   const [teacherName, setTeacherName] = useState('Enseignant');
   const [unreadMessages, setUnreadMessages] = useState(0);
@@ -97,6 +102,16 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     if (effectiveLoading || !effectiveUser) return;
     setTeacherName(effectiveUser.name);
   }, [effectiveUser, effectiveLoading]);
+
+  useEffect(() => {
+    // Check if we're in impersonation mode
+    setIsImpersonated(!!localStorage.getItem('impersonation'));
+  }, []);
+
+  const handleBackToAdmin = () => {
+    clearImpersonation();
+  };
+
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -246,8 +261,10 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
                 <p>{effectiveUser?.role === 'TEACHER' ? t.teacher : 'Assistant'}</p>
               </div>
             </div>
+
           </div>
         </header>
+
 
         <main className="teacher-content">{children}</main>
       </div>

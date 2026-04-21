@@ -31,6 +31,11 @@ export default function SchoolSchedulePage() {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Academic Year
+  const currentYear = new Date().getFullYear();
+  const [academicYearStart, setAcademicYearStart] = useState(`${currentYear}-09-01`);
+  const [academicYearEnd, setAcademicYearEnd] = useState(`${currentYear + 1}-06-30`);
+
   // Form
   const [formDay, setFormDay] = useState(1);
   const [formStart, setFormStart] = useState('08:00');
@@ -42,6 +47,12 @@ export default function SchoolSchedulePage() {
   useEffect(() => {
     const userStr = localStorage.getItem('user');
     if (userStr) setCurrentUser(JSON.parse(userStr));
+
+    // Load academic year dates from localStorage
+    const savedStart = localStorage.getItem('academicYearStart');
+    const savedEnd = localStorage.getItem('academicYearEnd');
+    if (savedStart) setAcademicYearStart(savedStart);
+    if (savedEnd) setAcademicYearEnd(savedEnd);
   }, []);
 
   const fetchClasses = async () => {
@@ -176,6 +187,47 @@ export default function SchoolSchedulePage() {
   return (
     <div className="school-teachers-page">
       <h2>📅 Horaire des Cours</h2>
+
+      {/* Academic Year Configuration */}
+      <div style={{
+        background: "#eff6ff",
+        border: "1px solid #bfdbfe",
+        borderRadius: 12,
+        padding: "16px 20px",
+        marginBottom: 20,
+        display: "flex",
+        gap: 20,
+        alignItems: "center",
+        flexWrap: "wrap",
+      }}>
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: "#1e40af", display: "block", marginBottom: 4 }}>📅 Année Académique Début</label>
+          <input
+            type="date"
+            value={academicYearStart}
+            onChange={(e) => {
+              setAcademicYearStart(e.target.value);
+              localStorage.setItem("academicYearStart", e.target.value);
+            }}
+            style={{ padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 6 }}
+          />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: "#1e40af", display: "block", marginBottom: 4 }}>📅 Année Académique Fin</label>
+          <input
+            type="date"
+            value={academicYearEnd}
+            onChange={(e) => {
+              setAcademicYearEnd(e.target.value);
+              localStorage.setItem("academicYearEnd", e.target.value);
+            }}
+            style={{ padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 6 }}
+          />
+        </div>
+        <div style={{ marginLeft: "auto", fontSize: 12, color: "#6b7280" }}>
+          L'horaire doit suivre l'année académique
+        </div>
+      </div>
       <p style={{ color: '#666', fontSize: 13, marginBottom: 16 }}>
         Assign course schedules per class. The teacher is automatically the class&apos;s main teacher.
       </p>

@@ -50,7 +50,7 @@ router.get('/:scheduleId', requireAuth, async (req, res) => {
 });
 
 // ================= CREATE SCHEDULE =================
-router.post('/', requireAdmin, async (req, res) => {
+router.post('/', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { class_id, course_id, day_of_week, start_time, end_time, room } = req.body;
 
@@ -78,7 +78,7 @@ router.post('/', requireAdmin, async (req, res) => {
 });
 
 // ================= UPDATE SCHEDULE =================
-router.put('/:scheduleId', requireAdmin, async (req, res) => {
+router.put('/:scheduleId', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { scheduleId } = req.params;
     const { class_id, course_id, day_of_week, start_time, end_time, room } = req.body;
@@ -108,7 +108,7 @@ router.put('/:scheduleId', requireAdmin, async (req, res) => {
 });
 
 // ================= DELETE SCHEDULE =================
-router.delete('/:scheduleId', requireAdmin, async (req, res) => {
+router.delete('/:scheduleId', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { scheduleId } = req.params;
 

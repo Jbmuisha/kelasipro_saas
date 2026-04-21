@@ -198,7 +198,7 @@ export default function SuperAdminLayout({
           <div className="topbar-left">
             {!sidebarOpen && (
               <div className="super-logo" style={{ fontSize: '18px', marginBottom: '0', marginRight: '20px' }}>
-                🚀 SP!K <span style={{ fontSize: '11px' }}>Super Admin</span>
+                <i className="fa fa-rocket"></i> SP!K <span style={{ fontSize: '11px' }}>Super Admin</span>
               </div>
             )}
             {!isMobile && (
