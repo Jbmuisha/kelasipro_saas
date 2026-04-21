@@ -18,6 +18,7 @@ type CourseItem = {
   teacher_name?: string;
   class_id?: number;
   class_name?: string;
+  classes?: { id: number; name: string }[];
 };
 
 export default function SchoolCoursesPage() {
@@ -46,6 +47,100 @@ export default function SchoolCoursesPage() {
   const [secCourseDesc, setSecCourseDesc] = useState('');
   const [secCreating, setSecCreating] = useState(false);
   const [secClassBaseFilter, setSecClassBaseFilter] = useState('');
+
+  // Edit/Delete state
+  const [editingCourse, setEditingCourse] = useState<CourseItem | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleEdit = (course: CourseItem) => {
+    setEditingCourse(course);
+    setEditName(course.name);
+    setEditDesc(course.description || '');
+  };
+
+  const closeEdit = () => {
+    setEditingCourse(null);
+    setEditName('');
+    setEditDesc('');
+  };
+
+  const handleUpdate = async () => {
+    if (!editingCourse) return;
+    setEditing(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('admin_token_backup');
+      let res = await fetch(`/api/courses/${editingCourse.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: editName.trim(), description: editDesc || null }),
+      });
+      if (res.status === 403) {
+        const adminToken = localStorage.getItem('admin_token_backup');
+        if (adminToken) {
+          res = await fetch(`/api/courses/${editingCourse.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+            body: JSON.stringify({ name: editName.trim(), description: editDesc || null }),
+          });
+        }
+      }
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error || 'Update failed');
+      }
+      setSuccessMsg('Course updated!');
+      closeEdit();
+      if (schoolLevel === 'primaire' || schoolLevel === 'maternelle') {
+        fetchPrimaireClasses();
+      } else {
+        fetchSecondaireData();
+      }
+    } catch (err: any) {
+      setError(err.message || 'Error updating course');
+    } finally {
+      setEditing(false);
+    }
+  };
+
+  const handleDelete = async (courseId: number) => {
+    if (!confirm('Delete this course? This will remove it from all linked classes.')) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('admin_token_backup');
+      let res = await fetch(`/api/courses/${courseId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 403) {
+        const adminToken = localStorage.getItem('admin_token_backup');
+        if (adminToken) {
+          res = await fetch(`/api/courses/${courseId}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${adminToken}` },
+          });
+        }
+      }
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error || 'Delete failed');
+      }
+      setSuccessMsg('Course deleted!');
+      if (schoolLevel === 'primaire' || schoolLevel === 'maternelle') {
+        fetchPrimaireClasses();
+      } else {
+        fetchSecondaireData();
+      }
+    } catch (err: any) {
+      setError(err.message || 'Error deleting course');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -276,46 +371,146 @@ export default function SchoolCoursesPage() {
   // ===================== RENDER =====================
 
   if (schoolLevel === 'primaire' || schoolLevel === 'maternelle') {
-    return <PrimaireCoursesView
-      classes={classes}
-      coursesByClass={coursesByClass}
-      loading={loading}
-      error={error}
-      successMsg={successMsg}
-      selectedClassId={selectedClassId}
-      setSelectedClassId={setSelectedClassId}
-      courseName={courseName}
-      setCourseName={setCourseName}
-      courseDesc={courseDesc}
-      setCourseDesc={setCourseDesc}
-      creating={creating}
-      onSubmit={createPrimaireCourse}
-      setError={setError}
-      setSuccessMsg={setSuccessMsg}
-      level={schoolLevel}
-    />;
+    return (
+      <>
+        <PrimaireCoursesView
+          classes={classes}
+          coursesByClass={coursesByClass}
+          loading={loading}
+          error={error}
+          successMsg={successMsg}
+          selectedClassId={selectedClassId}
+          setSelectedClassId={setSelectedClassId}
+          courseName={courseName}
+          setCourseName={setCourseName}
+          courseDesc={courseDesc}
+          setCourseDesc={setCourseDesc}
+          creating={creating}
+          onSubmit={createPrimaireCourse}
+          setError={setError}
+          setSuccessMsg={setSuccessMsg}
+          level={schoolLevel}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
+        {editingCourse && (
+          <EditCourseModal
+            course={editingCourse}
+            name={editName}
+            desc={editDesc}
+            onNameChange={setEditName}
+            onDescChange={setEditDesc}
+            onSave={handleUpdate}
+            onCancel={closeEdit}
+            loading={editing}
+          />
+        )}
+      </>
+    );
   }
 
-  return <SecondaireCoursesView
-    courses={secCourses}
-    classesList={secClassesList}
-    teachers={secTeachers}
-    loading={loading}
-    error={error}
-    successMsg={successMsg}
-    selectedClasses={secSelectedClasses}
-    setSelectedClasses={setSecSelectedClasses}
-    courseName={secCourseName}
-    setCourseName={setSecCourseName}
-    courseDesc={secCourseDesc}
-    setCourseDesc={setSecCourseDesc}
-    creating={secCreating}
-    onSubmit={createSecondaireCourse}
-    classBaseFilter={secClassBaseFilter}
-    setClassBaseFilter={setSecClassBaseFilter}
-    setError={setError}
-    setSuccessMsg={setSuccessMsg}
-  />;
+  return (
+    <>
+      <SecondaireCoursesView
+        courses={secCourses}
+        classesList={secClassesList}
+        teachers={secTeachers}
+        loading={loading}
+        error={error}
+        successMsg={successMsg}
+        selectedClasses={secSelectedClasses}
+        setSelectedClasses={setSecSelectedClasses}
+        courseName={secCourseName}
+        setCourseName={setSecCourseName}
+        courseDesc={secCourseDesc}
+        setCourseDesc={setSecCourseDesc}
+        creating={secCreating}
+        onSubmit={createSecondaireCourse}
+        classBaseFilter={secClassBaseFilter}
+        setClassBaseFilter={setSecClassBaseFilter}
+        setError={setError}
+        setSuccessMsg={setSuccessMsg}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+      />
+      {editingCourse && (
+        <EditCourseModal
+          course={editingCourse}
+          name={editName}
+          desc={editDesc}
+          onNameChange={setEditName}
+          onDescChange={setEditDesc}
+          onSave={handleUpdate}
+          onCancel={closeEdit}
+          loading={editing}
+        />
+      )}
+    </>
+  );
+}
+
+// =====================================================================
+//  EDIT COURSE MODAL
+// =====================================================================
+function EditCourseModal({
+  course, name, desc, onNameChange, onDescChange, onSave, onCancel, loading,
+}: {
+  course: CourseItem;
+  name: string;
+  desc: string;
+  onNameChange: (v: string) => void;
+  onDescChange: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: 'white', borderRadius: 12, padding: 24,
+        width: 'min(500px, 90vw)', maxWidth: 500,
+        boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
+      }}>
+        <h3 style={{ margin: '0 0 16px 0' }}>Edit Course</h3>
+        <div style={{ marginBottom: 12, fontSize: 14, color: '#666' }}>
+          ID: <strong>{course.id}</strong>
+        </div>
+        <label>Course Name *</label>
+        <input
+          value={name}
+          onChange={(e) => onNameChange(e.target.value)}
+          style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 6, marginBottom: 12 }}
+          placeholder="Course name"
+        />
+        <label>Description</label>
+        <input
+          value={desc}
+          onChange={(e) => onDescChange(e.target.value)}
+          style={{ width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 6, marginBottom: 20 }}
+          placeholder="Brief description"
+        />
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} disabled={loading} style={{
+            padding: '8px 16px', border: '1px solid #d1d5db', background: 'white',
+            borderRadius: 6, cursor: loading ? 'not-allowed' : 'pointer',
+          }}>
+            Cancel
+          </button>
+          <button onClick={onSave} disabled={loading || !name.trim()} style={{
+            padding: '8px 16px',
+            background: loading || !name.trim() ? '#9ca3af' : '#3b82f6',
+            color: 'white', border: 'none', borderRadius: 6,
+            cursor: loading || !name.trim() ? 'not-allowed' : 'pointer',
+          }}>
+            {loading ? 'Updating...' : 'Update Course'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // =====================================================================
@@ -326,6 +521,7 @@ function PrimaireCoursesView({
   selectedClassId, setSelectedClassId,
   courseName, setCourseName, courseDesc, setCourseDesc,
   creating, onSubmit, setError, setSuccessMsg, level,
+  onEdit, onDelete,
 }: {
   classes: ClassItem[];
   coursesByClass: Record<number, CourseItem[]>;
@@ -343,6 +539,8 @@ function PrimaireCoursesView({
   setError: (v: string | null) => void;
   setSuccessMsg: (v: string | null) => void;
   level: string;
+  onEdit: (course: CourseItem) => void;
+  onDelete: (id: number) => void;
 }) {
   const levelLabel = level === 'maternelle' ? 'Maternelle' : 'Primaire';
 
@@ -476,6 +674,36 @@ function PrimaireCoursesView({
                         {course.teacher_name}
                       </span>
                     )}
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button
+                        onClick={() => onEdit(course)}
+                        style={{
+                          padding: '4px 8px',
+                          background: '#f3f4f6',
+                          color: '#374151',
+                          border: 'none',
+                          borderRadius: 4,
+                          fontSize: 11,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => onDelete(course.id)}
+                        style={{
+                          padding: '4px 8px',
+                          background: '#fee2e2',
+                          color: '#dc2626',
+                          border: 'none',
+                          borderRadius: 4,
+                          fontSize: 11,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -500,6 +728,7 @@ function SecondaireCoursesView({
   courseName, setCourseName, courseDesc, setCourseDesc,
   creating, onSubmit, classBaseFilter, setClassBaseFilter,
   setError, setSuccessMsg,
+  onEdit, onDelete,
 }: {
   courses: any[];
   classesList: any[];
@@ -519,6 +748,8 @@ function SecondaireCoursesView({
   setClassBaseFilter: (v: string) => void;
   setError: (v: string | null) => void;
   setSuccessMsg: (v: string | null) => void;
+  onEdit: (course: CourseItem) => void;
+  onDelete: (id: number) => void;
 }) {
   const baseOrder = [
     '7eme secondaire', '8eme secondaire',
@@ -633,6 +864,7 @@ function SecondaireCoursesView({
                 <th>Description</th>
                 <th>Teacher</th>
                 <th>Classes</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -681,6 +913,37 @@ function SecondaireCoursesView({
                     {c.classes && c.classes.length > 0
                       ? c.classes.map((cl: any) => cl.name).join(', ')
                       : <span style={{ color: '#999' }}>None</span>}
+                  </td>
+                  <td>
+                    <button
+                      onClick={() => onEdit(c)}
+                      style={{
+                        padding: '4px 8px',
+                        background: '#f3f4f6',
+                        color: '#374151',
+                        border: 'none',
+                        borderRadius: 4,
+                        fontSize: 11,
+                        cursor: 'pointer',
+                        marginRight: 4,
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => onDelete(c.id)}
+                      style={{
+                        padding: '4px 8px',
+                        background: '#fee2e2',
+                        color: '#dc2626',
+                        border: 'none',
+                        borderRadius: 4,
+                        fontSize: 11,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
               ))}

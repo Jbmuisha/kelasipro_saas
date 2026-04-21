@@ -28,11 +28,13 @@ export default function ParentBulletinsPage() {
 
   const [selectedChildId, setSelectedChildId] = useState<number | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<number | null>(1);
+  const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"notes" | "bulletin" | "classement">("bulletin");
 
   // Grades
   const [grades, setGrades] = useState<GradeEntry[]>([]);
   const [loadingGrades, setLoadingGrades] = useState(false);
+  const [allCourses, setAllCourses] = useState<{id: number; name: string}[]>([]);
 
   // Bulletin
   const [bulletinData, setBulletinData] = useState<any>(null);
@@ -105,19 +107,34 @@ export default function ParentBulletinsPage() {
     const child = getChildInfo(selectedChildId!);
     if (!child?.class_id) return;
     setLoadingGrades(true);
+    setGrades([]);
+    setError(null);
     try {
       const token = localStorage.getItem("token");
-      let url = `/api/grades?class_id=${child.class_id}&student_id=${selectedChildId}&period=${selectedPeriod || 1}`;
+      const period = selectedPeriod || 1;
+      let url = `/api/grades?class_id=${child.class_id}&student_id=${selectedChildId}&period=${period}`;
+      if (selectedCourseId) url += `&course_id=${selectedCourseId}`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const data = await res.json();
         setGrades(data.grades || []);
+      } else {
+        setError("Erreur lors du chargement des notes");
+      }
+      
+      // Fetch courses for this class for filter dropdown
+      const coursesRes = await fetch(`/api/courses?class_id=${child.class_id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (coursesRes.ok) {
+        const coursesData = await coursesRes.json();
+        setAllCourses(coursesData.courses || []);
       }
     } catch (err: any) { setError(err.message); }
     finally { setLoadingGrades(false); }
   };
 
-  // Fetch bulletin
+  // Fetch bulletin and ranking
   const fetchBulletin = async () => {
     const child = getChildInfo(selectedChildId!);
     if (!child?.class_id) return;
@@ -127,6 +144,9 @@ export default function ParentBulletinsPage() {
     try {
       const token = localStorage.getItem("token");
       const schoolId = child.school_id || currentUser?.school_id;
+      const period = selectedPeriod || 1;
+      
+      // Fetch bulletin
       let url = `/api/grades/bulletin?student_id=${selectedChildId}&class_id=${child.class_id}&school_id=${schoolId}`;
       if (selectedPeriod) url += `&period=${selectedPeriod}`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -136,6 +156,16 @@ export default function ParentBulletinsPage() {
       } else {
         const b = await res.json().catch(() => ({}));
         setError(b.error || "Erreur lors du chargement");
+      }
+      
+      // Also fetch class summary for ranking
+      const summaryRes = await fetch(
+        `/api/grades/class-summary?class_id=${child.class_id}&period=${period}&school_id=${schoolId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (summaryRes.ok) {
+        const summary = await summaryRes.json();
+        setSummaryData(summary);
       }
     } catch (err: any) { setError(err.message); }
     finally { setLoadingBulletin(false); }
@@ -165,7 +195,7 @@ export default function ParentBulletinsPage() {
     if (activeTab === "notes") fetchGrades();
     else if (activeTab === "bulletin") fetchBulletin();
     else if (activeTab === "classement") fetchClassement();
-  }, [selectedChildId, selectedPeriod, activeTab, childDetails]);
+  }, [selectedChildId, selectedPeriod, selectedCourseId, activeTab, childDetails]);
 
   const getMentionColor = (m: string) => {
     if (m === "Très Grande Distinction") return "#7c3aed";
@@ -223,10 +253,27 @@ export default function ParentBulletinsPage() {
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Période</label>
             <select style={sel} value={selectedPeriod ?? ""} onChange={e => setSelectedPeriod(e.target.value ? Number(e.target.value) : null)}>
-              <option value={1}>1ère Période (T1)</option>
-              <option value={2}>2ème Période (T2)</option>
-              <option value={3}>3ème Période (T3)</option>
-              <option value="">Annuel</option>
+              <optgroup label="Trimestre 1">
+                <option value={1}>📄 Bulletin P1</option>
+                <option value={2}>📄 Bulletin P2</option>
+                <option value={3}>📝 Examen T1</option>
+                <option value={10}>📊 Total T1</option>
+              </optgroup>
+              <optgroup label="Trimestre 2">
+                <option value={4}>📄 Bulletin P4</option>
+                <option value={5}>📄 Bulletin P5</option>
+                <option value={6}>📝 Examen T2</option>
+                <option value={11}>📊 Total T2</option>
+              </optgroup>
+              <optgroup label="Trimestre 3">
+                <option value={7}>📄 Bulletin P7</option>
+                <option value={8}>📄 Bulletin P8</option>
+                <option value={9}>📝 Examen T3</option>
+                <option value={12}>📊 Total T3</option>
+              </optgroup>
+              <optgroup label="Annuel">
+                <option value={0}>📋 Bulletin Annuel</option>
+              </optgroup>
             </select>
           </div>
         </div>
@@ -242,9 +289,52 @@ export default function ParentBulletinsPage() {
       {/* ===== NOTES TAB ===== */}
       {activeTab === "notes" && (
         <div style={card}>
-          <h3 style={{ margin: "0 0 12px", fontSize: 16, color: "#111827" }}>📝 Notes détaillées — {children.find(c => c.id === selectedChildId)?.name}</h3>
+          <h3 style={{ margin: "0 0 12px", fontSize: 16, color: "#111827" }}>📝 Mes Notes — {children.find(c => c.id === selectedChildId)?.name}</h3>
+          
+          {/* Period and Course filters */}
+          <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Période</label>
+              <select 
+                style={{ ...sel, width: 160 }} 
+                value={selectedPeriod ?? ""} 
+                onChange={e => setSelectedPeriod(e.target.value ? Number(e.target.value) : null)}
+              >
+                <optgroup label="Trimestre 1">
+                  <option value={1}>P1</option>
+                  <option value={2}>P2</option>
+                  <option value={3}>Examen T1</option>
+                </optgroup>
+                <optgroup label="Trimestre 2">
+                  <option value={4}>P4</option>
+                  <option value={5}>P5</option>
+                  <option value={6}>Examen T2</option>
+                </optgroup>
+                <optgroup label="Trimestre 3">
+                  <option value={7}>P7</option>
+                  <option value={8}>P8</option>
+                  <option value={9}>Examen T3</option>
+                </optgroup>
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Cours</label>
+              <select 
+                style={{ ...sel, width: 180 }} 
+                value={selectedCourseId ?? ""} 
+                onChange={e => setSelectedCourseId(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">Tous les cours</option>
+                {allCourses.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          
+          {error && <p style={{ color: "#dc2626", marginBottom: 12 }}>{error}</p>}
           {loadingGrades && <p style={{ color: "#6b7280" }}>Chargement...</p>}
-          {!loadingGrades && grades.length === 0 && (
+          {!loadingGrades && grades.length === 0 && !error && (
             <div style={{ textAlign: "center", padding: 30, color: "#9ca3af" }}>
               <div style={{ fontSize: 40, marginBottom: 8 }}>📭</div>
               <p>Aucune note pour cette période.</p>
@@ -301,7 +391,35 @@ export default function ParentBulletinsPage() {
             <div style={card}>
               <div style={{ background: "linear-gradient(135deg, #1e3a5f, #2563eb)", borderRadius: 14, padding: "20px 24px", color: "#fff", marginBottom: 20, textAlign: "center" }}>
                 <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 800 }}>BULLETIN SCOLAIRE</h2>
-                <p style={{ margin: 0, opacity: 0.9, fontSize: 14 }}>{bulletinData.student?.name} — {bulletinData.class?.name} — {bulletinData.period}ème Période</p>
+                <p style={{ margin: 0, opacity: 0.9, fontSize: 14 }}>{bulletinData.student?.name} — {bulletinData.class?.name}</p>
+              </div>
+              {/* Summary stats */}
+              <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", justifyContent: "center" }}>
+                <div style={{ background: "#f0fdf4", border: "2px solid #bbf7d0", borderRadius: 14, padding: "16px 24px", textAlign: "center", minWidth: 140 }}>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: "#166534" }}>{bulletinData.percentage}%</div>
+                  <div style={{ fontSize: 11, color: "#6b7280" }}>Pourcentage</div>
+                </div>
+                <div style={{ background: getMentionBg(bulletinData.mention), border: `2px solid ${getMentionColor(bulletinData.mention)}20`, borderRadius: 14, padding: "16px 24px", textAlign: "center", minWidth: 140 }}>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: getMentionColor(bulletinData.mention) }}>{bulletinData.mention}</div>
+                  <div style={{ fontSize: 11, color: "#6b7280" }}>Mention</div>
+                </div>
+                <div style={{ background: "#eff6ff", border: "2px solid #bfdbfe", borderRadius: 14, padding: "16px 24px", textAlign: "center", minWidth: 140 }}>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: "#1e40af" }}>
+                    {summaryData?.students?.find((s: any) => s.student_id === selectedChildId)?.rank || "—"}
+                    <span style={{ fontSize: 12, fontWeight: 400 }}>/{summaryData?.total_students || "—"}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#6b7280" }}>Rang Classe</div>
+                </div>
+                <div style={{ 
+                  background: bulletinData.decision === "Réussi" ? "#f0fdf4" : bulletinData.decision === "Repêotage" ? "#fffbeb" : "#fef2f2", 
+                  border: `2px solid ${bulletinData.decision === "Réussi" ? "#bbf7d0" : bulletinData.decision === "Repêotage" ? "#fde68a" : "#fecaca"}`, 
+                  borderRadius: 14, padding: "16px 24px", textAlign: "center", minWidth: 140 
+                }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: bulletinData.decision === "Réussi" ? "#166534" : bulletinData.decision === "Repêotage" ? "#92400e" : "#991b1b" }}>
+                    {bulletinData.decision === "Réussi" ? "✅ RÉUSSI" : bulletinData.decision === "Repêotage" ? "⚠️ REPÊCHAGE" : "❌ DOUBLE"}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#6b7280" }}>Seuil: {bulletinData.pass_percentage}%</div>
+                </div>
               </div>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -338,26 +456,6 @@ export default function ParentBulletinsPage() {
                     </tr>
                   </tfoot>
                 </table>
-              </div>
-              <div style={{ display: "flex", gap: 16, marginTop: 20, flexWrap: "wrap", justifyContent: "center" }}>
-                <div style={{ background: "#f0f9ff", border: "2px solid #bfdbfe", borderRadius: 14, padding: "16px 24px", textAlign: "center", minWidth: 140 }}>
-                  <div style={{ fontSize: 28, fontWeight: 800, color: "#1e40af" }}>{bulletinData.percentage}%</div>
-                  <div style={{ fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Pourcentage</div>
-                </div>
-                <div style={{ background: getMentionBg(bulletinData.mention), border: `2px solid ${getMentionColor(bulletinData.mention)}20`, borderRadius: 14, padding: "16px 24px", textAlign: "center", minWidth: 140 }}>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: getMentionColor(bulletinData.mention) }}>{bulletinData.mention}</div>
-                  <div style={{ fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Mention</div>
-                </div>
-                <div style={{ 
-                  background: bulletinData.decision === "Réussi" ? "#f0fdf4" : bulletinData.decision === "Repêotage" ? "#fffbeb" : "#fef2f2", 
-                  border: `2px solid ${bulletinData.decision === "Réussi" ? "#bbf7d0" : bulletinData.decision === "Repêotage" ? "#fde68a" : "#fecaca"}`, 
-                  borderRadius: 14, padding: "16px 24px", textAlign: "center", minWidth: 140 
-                }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: bulletinData.decision === "Réussi" ? "#166534" : bulletinData.decision === "Repêotage" ? "#92400e" : "#991b1b" }}>
-                    {bulletinData.decision === "Réussi" ? "✅ RÉUSSI" : bulletinData.decision === "Repêotage" ? "⚠️ REPÊCHAGE" : "❌ DOUBLE"}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#6b7280" }}>Seuil: {bulletinData.pass_percentage}%</div>
-                </div>
               </div>
             </div>
           )}

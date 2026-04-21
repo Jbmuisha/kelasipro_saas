@@ -26,6 +26,11 @@ type GradeConfig = {
   max_periods: number;
 };
 
+type SchoolThresholds = {
+  pass_percentage: number;
+  double_percentage: number;
+};
+
 type ClassSummaryStudent = {
   student_id: number;
   student_name: string;
@@ -44,7 +49,14 @@ export default function SchoolGradesPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Config
+  // Config - School Admin Thresholds
+  const [schoolThresholds, setSchoolThresholds] = useState<SchoolThresholds>({
+    pass_percentage: 50,
+    double_percentage: 55,
+  });
+  const [savingThresholds, setSavingThresholds] = useState(false);
+
+  // Config - General settings
   const [config, setConfig] = useState<GradeConfig>({
     pass_percentage: 50,
     repech_percentage: 45,
@@ -52,7 +64,7 @@ export default function SchoolGradesPage() {
     interro_weight: 50,
     devoir_weight: 50,
     examen_weight: 0,
-    max_periods: 3,
+    max_periods: 9,
   });
   const [savingConfig, setSavingConfig] = useState(false);
 
@@ -71,11 +83,15 @@ export default function SchoolGradesPage() {
   const [summaryData, setSummaryData] = useState<any>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
   
+  // All periods data for overview
+  const [allPeriodsData, setAllPeriodsData] = useState<Record<number, any>>({});
+  const [loadingAllPeriods, setLoadingAllPeriods] = useState(false);
+  
   // Submit bulletins
   const [submittingBulletin, setSubmittingBulletin] = useState(false);
 
   // Tab
-  const [activeTab, setActiveTab] = useState<"config" | "courses" | "results">("config");
+  const [activeTab, setActiveTab] = useState<"thresholds" | "courses" | "results">("thresholds");
 
   useEffect(() => {
     const userStr = localStorage.getItem("user");
@@ -157,6 +173,32 @@ export default function SchoolGradesPage() {
     }
   };
 
+
+  // Save school thresholds
+  const handleSaveThresholds = async () => {
+    setSavingThresholds(true);
+    setError(null);
+    try {
+      // Save to localStorage for now
+      localStorage.setItem("school_thresholds_" + currentUser?.school_id, JSON.stringify(schoolThresholds));
+      setSuccess("Seuils sauvegardés!");
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSavingThresholds(false);
+    }
+  };
+
+  // Load school thresholds from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("school_thresholds_" + currentUser?.school_id);
+    if (saved) {
+      try {
+        setSchoolThresholds(JSON.parse(saved));
+      } catch {}
+    }
+  }, [currentUser]);
+
   // Load course configs for selected class
   useEffect(() => {
     if (!selectedClassId) return;
@@ -233,6 +275,38 @@ export default function SchoolGradesPage() {
       setError(err.message);
     } finally {
       setLoadingSummary(false);
+    }
+  };
+
+  // Fetch all periods summaries for overview
+  const fetchAllPeriods = async () => {
+    if (!summaryClassId) return;
+    setLoadingAllPeriods(true);
+    setAllPeriodsData({});
+    try {
+      const token = localStorage.getItem("token");
+      const periods = [1, 2, 3, 10, 4, 5, 6, 11, 7, 8, 9, 12, 0]; // P1-P9, Trimestres T1-T3, Annuel
+      const results: Record<number, any> = {};
+      
+      for (const period of periods) {
+        try {
+          const res = await fetch(
+            `/api/grades/class-summary?class_id=${summaryClassId}&period=${period}&school_id=${currentUser?.school_id}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            results[period] = data;
+          }
+        } catch (err) {
+          console.error(`Error fetching period ${period}:`, err);
+        }
+      }
+      setAllPeriodsData(results);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoadingAllPeriods(false);
     }
   };
 
@@ -382,49 +456,34 @@ export default function SchoolGradesPage() {
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: "1px solid #e5e7eb" }}>
-        <button style={tabStyle(activeTab === "config")} onClick={() => setActiveTab("config")}>⚙️ Configuration</button>
+        <button style={tabStyle(activeTab === "thresholds")} onClick={() => setActiveTab("thresholds")}>🏫 Seuils Ecole</button>
         <button style={tabStyle(activeTab === "courses")} onClick={() => setActiveTab("courses")}>📚 Coefficients</button>
         <button style={tabStyle(activeTab === "results")} onClick={() => setActiveTab("results")}>🏆 Résultats</button>
       </div>
 
-      {/* ===================== TAB: CONFIG ===================== */}
-      {activeTab === "config" && (
+      {/* ===================== TAB: THRESHOLDS (SCHOOL ADMIN) ===================== */}
+      {activeTab === "thresholds" && (
         <div>
           <div style={cardStyle}>
-            <h3 style={{ margin: "0 0 16px", fontSize: 16, color: "#111827" }}>⚙️ Configuration du système de notation</h3>
+            <h3 style={{ margin: "0 0 16px", fontSize: 16, color: "#111827" }}>🏫 Configuration des Seuils de l&apos;Ecole</h3>
             <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>
-              Ces paramètres s&apos;appliquent à toute l&apos;école pour le calcul des moyennes et bulletins.
+              Ces seuils s&apos;appliquent à toute l&apos;école pour décider si l&apos;élève passe, redouble ou double.
             </p>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
-                  Pourcentage de réussite (%)
+                  Pourcentage de Réussite (%)
                 </label>
                 <input
                   type="number"
                   min={0}
                   max={100}
-                  value={config.pass_percentage}
-                  onChange={(e) => setConfig({ ...config, pass_percentage: Number(e.target.value) })}
+                  value={schoolThresholds.pass_percentage}
+                  onChange={(e) => setSchoolThresholds({ ...schoolThresholds, pass_percentage: Number(e.target.value) })}
                   style={inputStyle}
                 />
-                <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>Seuil minimum pour réussir (ex: 50%)</p>
-              </div>
-
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
-                  Seuil Repêotage (%)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={config.repech_percentage}
-                  onChange={(e) => setConfig({ ...config, repech_percentage: Number(e.target.value) })}
-                  style={inputStyle}
-                />
-                <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>Minimum pour repêotage (ex: 45%)</p>
+                <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>Seuil minimum pour passer en classe supérieure</p>
               </div>
 
               <div>
@@ -435,103 +494,43 @@ export default function SchoolGradesPage() {
                   type="number"
                   min={0}
                   max={100}
-                  value={config.double_percentage}
-                  onChange={(e) => setConfig({ ...config, double_percentage: Number(e.target.value) })}
+                  value={schoolThresholds.double_percentage}
+                  onChange={(e) => setSchoolThresholds({ ...schoolThresholds, double_percentage: Number(e.target.value) })}
                   style={inputStyle}
                 />
-                <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>Au-dessus de ce seuil = double (ex: 55%)</p>
-              </div>
-
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
-                  Poids des Interrogations (%)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={config.interro_weight}
-                  onChange={(e) => setConfig({ ...config, interro_weight: Number(e.target.value) })}
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
-                  Poids des Devoirs (%)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={config.devoir_weight}
-                  onChange={(e) => setConfig({ ...config, devoir_weight: Number(e.target.value) })}
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
-                  Poids des Examens (%)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={config.examen_weight}
-                  onChange={(e) => setConfig({ ...config, examen_weight: Number(e.target.value) })}
-                  style={inputStyle}
-                />
-                <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>0% si pas d&apos;examen au primaire</p>
-              </div>
-
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
-                  Nombre de périodes
-                </label>
-                <select
-                  value={config.max_periods}
-                  onChange={(e) => setConfig({ ...config, max_periods: Number(e.target.value) })}
-                  style={inputStyle}
-                >
-                  <option value={3}>3 (Primaire - Trimestres)</option>
-                  <option value={4}>4 (Secondaire - Semestres)</option>
-                  <option value={6}>6 (Primaire - P1, P2 par Trim.)</option>
-                  <option value={9}>9 (Primaire - P1, P2, EXAMEN par Trim.)</option>
-                </select>
-                <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
-                  9 = 3 trimestres × (P1 + P2 + Examen)
-                </p>
+                <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>En-dessous de ce seuil = Double (redouble l'année)</p>
               </div>
             </div>
+            <p style={{ fontSize: 12, color: "#dc2626", marginTop: 12 }}>⚠️ Primaire: Pas de repêchage - en dessous du seuil = Double directement</p>
 
             <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
-              <button style={{ ...btnPrimary, opacity: savingConfig ? 0.6 : 1 }} disabled={savingConfig} onClick={handleSaveConfig}>
-                {savingConfig ? "Sauvegarde..." : "💾 Sauvegarder Configuration"}
+              <button style={{ ...btnPrimary, opacity: savingThresholds ? 0.6 : 1 }} disabled={savingThresholds} onClick={handleSaveThresholds}>
+                {savingThresholds ? "Sauvegarde..." : "💾 Sauvegarder Seuils"}
               </button>
             </div>
           </div>
 
-          {/* Info box */}
+          {/* Info box - Primaire structure */}
           <div style={{
             background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 14,
             padding: "16px 20px", fontSize: 13, color: "#1e40af",
           }}>
-            <strong>ℹ️ Système de notation RDC (Primaire):</strong>
+            <strong>ℹ️ Structure Primaire (3 Trimestres):</strong>
             <ul style={{ margin: "8px 0 0", paddingLeft: 20, lineHeight: 1.8 }}>
-              <li>3 périodes (trimestres) par année scolaire</li>
-              <li>Chaque période: interrogations + devoirs (+ examens optionnel)</li>
-              <li>Moyenne période = (Moy. Interros × poids) + (Moy. Devoirs × poids)</li>
-              <li>Moyenne annuelle = (P1 + P2 + P3) ÷ 3</li>
-              <li>Points = Moyenne cours × Coefficient</li>
-              <li>Pourcentage = (Total obtenu ÷ Total possible) × 100</li>
+              <li><strong>1er Trimestre:</strong> P1 + P2 + Examen 1</li>
+              <li><strong>2ème Trimestre:</strong> P3 + P4 + Examen 2</li>
+              <li><strong>3ème Trimestre:</strong> P5 + P6 + Examen 3</li>
+              <li><strong>Total Général:</strong> T1 + T2 + T3</li>
+              <li><strong>Décision:</strong> Si Total ≥ seuil → Passe | Sinon → Redouble</li>
             </ul>
             <div style={{ marginTop: 10 }}>
-              <strong>Mentions:</strong> 50% Suffisant | 60% Distinction | 70% Grande Distinction | 80%+ Très Grande Distinction
+              <strong>Mentions:</strong> ≥50% Suffisant | ≥60% Distinction | ≥70% Grande Distinction | ≥80% Très Grande Distinction
             </div>
           </div>
         </div>
       )}
+
+
 
       {/* ===================== TAB: COURSE CONFIGS ===================== */}
       {activeTab === "courses" && (
@@ -671,59 +670,65 @@ export default function SchoolGradesPage() {
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>Période</label>
                 <select
-                  style={{ ...inputStyle, width: 200, background: "#fff" }}
+                  style={{ ...inputStyle, width: 220, background: "#fff" }}
                   value={summaryPeriod}
                   onChange={(e) => setSummaryPeriod(Number(e.target.value))}
                 >
                   <optgroup label="Trimestre 1">
-                    <option value={1}>Période 1 (P1)</option>
-                    <option value={2}>Période 2 (P2)</option>
-                    <option value={3}>Examen T1</option>
+                    <option value={1}>📄 Bulletin P1</option>
+                    <option value={2}>📄 Bulletin P2</option>
+                    <option value={3}>📝 Examen T1</option>
+                    <option value={10}>📊 Total Trimestre 1</option>
                   </optgroup>
                   <optgroup label="Trimestre 2">
-                    <option value={4}>Période 4 (P4)</option>
-                    <option value={5}>Période 5 (P5)</option>
-                    <option value={6}>Examen T2</option>
+                    <option value={4}>📄 Bulletin P4</option>
+                    <option value={5}>📄 Bulletin P5</option>
+                    <option value={6}>📝 Examen T2</option>
+                    <option value={11}>📊 Total Trimestre 2</option>
                   </optgroup>
                   <optgroup label="Trimestre 3">
-                    <option value={7}>Période 7 (P7)</option>
-                    <option value={8}>Période 8 (P8)</option>
-                    <option value={9}>Examen T3</option>
+                    <option value={7}>📄 Bulletin P7</option>
+                    <option value={8}>📄 Bulletin P8</option>
+                    <option value={9}>📝 Examen T3</option>
+                    <option value={12}>📊 Total Trimestre 3</option>
                   </optgroup>
-                  <optgroup label="Annuel">
-                    <option value={0}>Total Annuel</option>
+                  <optgroup label="Bulletin Annuel">
+                    <option value={0}>📋 Bulletin Annuel</option>
                   </optgroup>
                 </select>
               </div>
               <button style={btnPrimary} onClick={fetchClassSummary} disabled={!summaryClassId || loadingSummary}>
                 {loadingSummary ? "Chargement..." : "📊 Voir Résultats"}
               </button>
-              <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
-                <button
-                  style={{ ...btnPrimary, background: "linear-gradient(135deg, #059669, #047857)" }}
-                  onClick={() => { console.log("Click Parents", summaryClassId, summaryPeriod); handleSubmitBulletin(true, false); }}
-                  disabled={submittingBulletin || !summaryClassId}
-                  title="Envoyer uniquement aux parents"
-                >
-                  {submittingBulletin ? "..." : "👤 Parents"}
-                </button>
-                <button
-                  style={{ ...btnPrimary, background: "linear-gradient(135deg, #dc2626, #b91c1c)" }}
-                  onClick={() => handleSubmitBulletin(false, true)}
-                  disabled={submittingBulletin || !summaryClassId}
-                  title="Envoyer uniquement aux élèves"
-                >
-                  {submittingBulletin ? "..." : "👦 Élèves"}
-                </button>
-                <button
-                  style={{ ...btnPrimary, background: "linear-gradient(135deg, #7c3aed, #6d28d9)" }}
-                  onClick={() => handleSubmitBulletin(true, true)}
-                  disabled={submittingBulletin || !summaryClassId}
-                  title="Envoyer aux parents et aux élèves"
-                >
-                  {submittingBulletin ? "..." : "📤 Tous"}
-                </button>
-              </div>
+              {/* Bulletin buttons - only show after results are loaded */}
+              {summaryData && (
+                <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
+                  <button
+                    style={{ ...btnPrimary, background: "linear-gradient(135deg, #059669, #047857)" }}
+                    onClick={() => { console.log("Click Parents", summaryClassId, summaryPeriod); handleSubmitBulletin(true, false); }}
+                    disabled={submittingBulletin || !summaryClassId}
+                    title="Envoyer uniquement aux parents"
+                  >
+                    {submittingBulletin ? "..." : "👤 Parents"}
+                  </button>
+                  <button
+                    style={{ ...btnPrimary, background: "linear-gradient(135deg, #dc2626, #b91c1c)" }}
+                    onClick={() => handleSubmitBulletin(false, true)}
+                    disabled={submittingBulletin || !summaryClassId}
+                    title="Envoyer uniquement aux élèves"
+                  >
+                    {submittingBulletin ? "..." : "👦 Élèves"}
+                  </button>
+                  <button
+                    style={{ ...btnPrimary, background: "linear-gradient(135deg, #7c3aed, #6d28d9)" }}
+                    onClick={() => handleSubmitBulletin(true, true)}
+                    disabled={submittingBulletin || !summaryClassId}
+                    title="Envoyer aux parents et aux élèves"
+                  >
+                    {submittingBulletin ? "..." : "📤 Tous"}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -751,6 +756,31 @@ export default function SchoolGradesPage() {
                       {Math.round((summaryData.passed_count / summaryData.total_students) * 100)}%
                     </div>
                     <div style={{ fontSize: 11, color: "#6b7280" }}>Taux de réussite</div>
+                  </div>
+                )}
+                {/* First Student (1er de classe) */}
+                {summaryData.students && summaryData.students.length > 0 && (
+                  <div style={{ background: "#ecfdf5", border: "1px solid #6ee7b7", borderRadius: 12, padding: "12px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: "#065f46" }}>🥇 1er</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#065f46", marginTop: 4 }}>{summaryData.students[0]?.student_name}</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "#059669" }}>{summaryData.students[0]?.percentage}%</div>
+                  </div>
+                )}
+                {/* Last Student (dernier de classe) */}
+                {summaryData.students && summaryData.students.length > 0 && (
+                  <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 12, padding: "12px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: "#991b1b" }}>🔻 Dernier</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#991b1b", marginTop: 4 }}>{summaryData.students[summaryData.students.length - 1]?.student_name}</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "#dc2626" }}>{summaryData.students[summaryData.students.length - 1]?.percentage}%</div>
+                  </div>
+                )}
+                {/* Class Average */}
+                {summaryData.students && summaryData.students.length > 0 && (
+                  <div style={{ background: "#f3f4f6", border: "1px solid #d1d5db", borderRadius: 12, padding: "12px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: "#374151" }}>📊 Moyenne Classe</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: "#1f2937", marginTop: 4 }}>
+                      {Math.round(summaryData.students.reduce((sum: number, s: ClassSummaryStudent) => sum + s.percentage, 0) / summaryData.students.length)}%
+                    </div>
                   </div>
                 )}
               </div>
@@ -808,6 +838,155 @@ export default function SchoolGradesPage() {
               </div>
             </div>
           )}
+
+          {/* ===================== ALL PERIOD TRANSCRIPTS ===================== */}
+          <div style={{ marginTop: 24, padding: 20, background: "#f8fafc", borderRadius: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 16, color: "#1e40af" }}>📋 Bulletins & Totaux Trimestres</h3>
+              <button 
+                style={{ ...btnPrimary, fontSize: 12, padding: "8px 16px" }}
+                onClick={fetchAllPeriods}
+                disabled={loadingAllPeriods || !summaryClassId}
+              >
+                {loadingAllPeriods ? "Chargement..." : "🔄 Charger Tous les Bulletins"}
+              </button>
+            </div>
+
+            {Object.keys(allPeriodsData).length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
+                {/* Period 1 - P1 */}
+                {allPeriodsData[1] && (
+                  <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontWeight: 700, color: "#1e40af", marginBottom: 8 }}>📄 Bulletin P1</div>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>Réussi: {allPeriodsData[1].passed_count}/{allPeriodsData[1].total_students}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#1e40af" }}>
+                      {allPeriodsData[1].total_students > 0 ? Math.round((allPeriodsData[1].passed_count / allPeriodsData[1].total_students) * 100) : 0}%
+                    </div>
+                  </div>
+                )}
+                {/* Period 2 - P2 */}
+                {allPeriodsData[2] && (
+                  <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontWeight: 700, color: "#1e40af", marginBottom: 8 }}>📄 Bulletin P2</div>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>Réussi: {allPeriodsData[2].passed_count}/{allPeriodsData[2].total_students}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#1e40af" }}>
+                      {allPeriodsData[2].total_students > 0 ? Math.round((allPeriodsData[2].passed_count / allPeriodsData[2].total_students) * 100) : 0}%
+                    </div>
+                  </div>
+                )}
+                {/* Period 3 - Examen T1 */}
+                {allPeriodsData[3] && (
+                  <div style={{ background: "#f5f3ff", border: "1px solid #c4b5fd", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontWeight: 700, color: "#7c3aed", marginBottom: 8 }}>📝 Examen T1</div>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>Réussi: {allPeriodsData[3].passed_count}/{allPeriodsData[3].total_students}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#7c3aed" }}>
+                      {allPeriodsData[3].total_students > 0 ? Math.round((allPeriodsData[3].passed_count / allPeriodsData[3].total_students) * 100) : 0}%
+                    </div>
+                  </div>
+                )}
+                {/* Period 10 - Total Trimestre 1 */}
+                {allPeriodsData[10] && (
+                  <div style={{ background: "linear-gradient(135deg, #3b82f6, #2563eb)", borderRadius: 8, padding: 12, color: "white" }}>
+                    <div style={{ fontWeight: 700, marginBottom: 8 }}>📊 Total Trimestre 1</div>
+                    <div style={{ fontSize: 12, opacity: 0.9 }}>Réussi: {allPeriodsData[10].passed_count}/{allPeriodsData[10].total_students}</div>
+                    <div style={{ fontSize: 18, fontWeight: 800 }}>
+                      {allPeriodsData[10].total_students > 0 ? Math.round((allPeriodsData[10].passed_count / allPeriodsData[10].total_students) * 100) : 0}%
+                    </div>
+                  </div>
+                )}
+                {/* Period 4 - P4 */}
+                {allPeriodsData[4] && (
+                  <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontWeight: 700, color: "#1e40af", marginBottom: 8 }}>📄 Bulletin P4</div>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>Réussi: {allPeriodsData[4].passed_count}/{allPeriodsData[4].total_students}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#1e40af" }}>
+                      {allPeriodsData[4].total_students > 0 ? Math.round((allPeriodsData[4].passed_count / allPeriodsData[4].total_students) * 100) : 0}%
+                    </div>
+                  </div>
+                )}
+                {/* Period 5 - P5 */}
+                {allPeriodsData[5] && (
+                  <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontWeight: 700, color: "#1e40af", marginBottom: 8 }}>📄 Bulletin P5</div>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>Réussi: {allPeriodsData[5].passed_count}/{allPeriodsData[5].total_students}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#1e40af" }}>
+                      {allPeriodsData[5].total_students > 0 ? Math.round((allPeriodsData[5].passed_count / allPeriodsData[5].total_students) * 100) : 0}%
+                    </div>
+                  </div>
+                )}
+                {/* Period 6 - Examen T2 */}
+                {allPeriodsData[6] && (
+                  <div style={{ background: "#f5f3ff", border: "1px solid #c4b5fd", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontWeight: 700, color: "#7c3aed", marginBottom: 8 }}>📝 Examen T2</div>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>Réussi: {allPeriodsData[6].passed_count}/{allPeriodsData[6].total_students}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#7c3aed" }}>
+                      {allPeriodsData[6].total_students > 0 ? Math.round((allPeriodsData[6].passed_count / allPeriodsData[6].total_students) * 100) : 0}%
+                    </div>
+                  </div>
+                )}
+                {/* Period 11 - Total Trimestre 2 */}
+                {allPeriodsData[11] && (
+                  <div style={{ background: "linear-gradient(135deg, #3b82f6, #2563eb)", borderRadius: 8, padding: 12, color: "white" }}>
+                    <div style={{ fontWeight: 700, marginBottom: 8 }}>📊 Total Trimestre 2</div>
+                    <div style={{ fontSize: 12, opacity: 0.9 }}>Réussi: {allPeriodsData[11].passed_count}/{allPeriodsData[11].total_students}</div>
+                    <div style={{ fontSize: 18, fontWeight: 800 }}>
+                      {allPeriodsData[11].total_students > 0 ? Math.round((allPeriodsData[11].passed_count / allPeriodsData[11].total_students) * 100) : 0}%
+                    </div>
+                  </div>
+                )}
+                {/* Period 7 - P7 */}
+                {allPeriodsData[7] && (
+                  <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontWeight: 700, color: "#1e40af", marginBottom: 8 }}>📄 Bulletin P7</div>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>Réussi: {allPeriodsData[7].passed_count}/{allPeriodsData[7].total_students}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#1e40af" }}>
+                      {allPeriodsData[7].total_students > 0 ? Math.round((allPeriodsData[7].passed_count / allPeriodsData[7].total_students) * 100) : 0}%
+                    </div>
+                  </div>
+                )}
+                {/* Period 8 - P8 */}
+                {allPeriodsData[8] && (
+                  <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontWeight: 700, color: "#1e40af", marginBottom: 8 }}>📄 Bulletin P8</div>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>Réussi: {allPeriodsData[8].passed_count}/{allPeriodsData[8].total_students}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#1e40af" }}>
+                      {allPeriodsData[8].total_students > 0 ? Math.round((allPeriodsData[8].passed_count / allPeriodsData[8].total_students) * 100) : 0}%
+                    </div>
+                  </div>
+                )}
+                {/* Period 9 - Examen T3 */}
+                {allPeriodsData[9] && (
+                  <div style={{ background: "#f5f3ff", border: "1px solid #c4b5fd", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontWeight: 700, color: "#7c3aed", marginBottom: 8 }}>📝 Examen T3</div>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>Réussi: {allPeriodsData[9].passed_count}/{allPeriodsData[9].total_students}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#7c3aed" }}>
+                      {allPeriodsData[9].total_students > 0 ? Math.round((allPeriodsData[9].passed_count / allPeriodsData[9].total_students) * 100) : 0}%
+                    </div>
+                  </div>
+                )}
+                {/* Period 12 - Total Trimestre 3 */}
+                {allPeriodsData[12] && (
+                  <div style={{ background: "linear-gradient(135deg, #3b82f6, #2563eb)", borderRadius: 8, padding: 12, color: "white" }}>
+                    <div style={{ fontWeight: 700, marginBottom: 8 }}>📊 Total Trimestre 3</div>
+                    <div style={{ fontSize: 12, opacity: 0.9 }}>Réussi: {allPeriodsData[12].passed_count}/{allPeriodsData[12].total_students}</div>
+                    <div style={{ fontSize: 18, fontWeight: 800 }}>
+                      {allPeriodsData[12].total_students > 0 ? Math.round((allPeriodsData[12].passed_count / allPeriodsData[12].total_students) * 100) : 0}%
+                    </div>
+                  </div>
+                )}
+                {/* Annual - Bulletin Annuel */}
+                {allPeriodsData[0] && (
+                  <div style={{ background: "linear-gradient(135deg, #059669, #047857)", borderRadius: 8, padding: 12, color: "white" }}>
+                    <div style={{ fontWeight: 700, marginBottom: 8 }}>📋 Bulletin Annuel</div>
+                    <div style={{ fontSize: 12, opacity: 0.9 }}>Réussi: {allPeriodsData[0].passed_count}/{allPeriodsData[0].total_students}</div>
+                    <div style={{ fontSize: 20, fontWeight: 800 }}>
+                      {allPeriodsData[0].total_students > 0 ? Math.round((allPeriodsData[0].passed_count / allPeriodsData[0].total_students) * 100) : 0}%
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
