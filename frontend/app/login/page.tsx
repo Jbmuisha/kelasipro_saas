@@ -68,6 +68,9 @@ export default function LoginPage() {
         // Store new session data
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", JSON.stringify(data.user));
+        
+        // Set cookie for middleware authentication
+        document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
 
         if (data.user.school_id) {
           localStorage.setItem("school_id", String(data.user.school_id));
@@ -80,10 +83,15 @@ export default function LoginPage() {
           (data.user.admin_level || data.user.school_type || "primaire").toLowerCase();
         localStorage.setItem("school_type", resolvedSchoolType);
 
-        // CRITICAL: Set cookie for middleware
-        document.cookie = `token=${data.token}; path=/; SameSite=Strict; Secure=false`;
+// Set reliable cookie + role cookie for middleware
+        document.cookie = `token=${data.token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+        document.cookie = `role=${data.user.role}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        
+        console.log('[LOGIN] Cookie set:', document.cookie);
+        console.log(`[LOGIN SUCCESS] User: ${identifier}, Role: ${data.user.role}, Cookie visible: ${document.cookie.includes('token=')}`);
 
-        console.log(`[LOGIN SUCCESS] User: ${identifier}, Role: ${data.user.role}`);
 
         // Respect middleware returnTo or fallback to role route
         const role = data.user.role;
@@ -98,7 +106,10 @@ export default function LoginPage() {
         };
 
         const returnTo = searchParams.get('returnTo') || routes[role] || '/';
-        router.push(decodeURIComponent(returnTo));
+        const targetUrl = decodeURIComponent(returnTo);
+        
+        // Use hard redirect to ensure cookie is sent
+        window.location.href = targetUrl;
       }
     } catch (err) {
       console.error("[LOGIN ERROR]", err);

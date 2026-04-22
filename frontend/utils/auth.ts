@@ -13,13 +13,32 @@ export interface User {
   class_id?: number;
 }
 
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+  return null;
+}
+
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
+    let token = localStorage.getItem("token");
+    let storedUser = localStorage.getItem("user");
+
+    // Fallback to cookie if localStorage missing
+    if (!token || !storedUser) {
+      token = getCookie("token");
+      storedUser = localStorage.getItem("user"); // Try LS user still
+      if (token && !storedUser) {
+        // Sync cookie token to LS for consistency
+        localStorage.setItem("token", token);
+      }
+    }
+
     if (token && storedUser) {
       try {
         const parsedUser: User = JSON.parse(storedUser);
@@ -31,6 +50,7 @@ export const useAuth = () => {
     }
     setLoading(false);
   }, []);
+
 
   const login = useCallback((token: string, userData: User) => {
     localStorage.setItem("token", token);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FaPen, FaTrash, FaCheck, FaTimes } from "react-icons/fa";
 import "./classes.css";
 
 const Toast = ({ message, type, onClose }: { message: string; type: string; onClose: () => void }) => (
@@ -32,6 +33,9 @@ export default function SecretaryClassesPage() {
   const [schoolType, setSchoolType] = useState<string | null>(null);
   const [allowedClassNames, setAllowedClassNames] = useState<string[]>([]);
   const [customClassName, setCustomClassName] = useState('');
+  const [showManageNames, setShowManageNames] = useState(false);
+  const [editingClassName, setEditingClassName] = useState<string | null>(null);
+  const [newClassName, setNewClassName] = useState('');
   const [selectedClassName, setSelectedClassName] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
 
@@ -57,26 +61,38 @@ export default function SecretaryClassesPage() {
         const data = await res.json();
         const st = data.school_type || 'primaire';
         setSchoolType(st);
-        // derive allowed names client-side (mirror backend helpers)
-        const primaire = [
-          "1ere primaire",
-          "2eme primaire",
-          "3eme primaire",
-          "4eme primaire",
-          "5eme primaire",
-          "6eme primaire",
-        ];
-        const secondaire = [
-          "1ere secondaire",
-          "2eme secondaire",
-          "3eme secondaire",
-          "4eme secondaire",
-          "5eme secondaire",
-          "6eme secondaire",
-        ];
-        if (st && st.toLowerCase().includes('primaire')) setAllowedClassNames(primaire);
-        else if (st && st.toLowerCase().includes('second')) setAllowedClassNames(secondaire);
-        else setAllowedClassNames([]);
+        
+        // Load custom class names from localStorage or use defaults
+        const storageKey = `classNames_${st}`;
+        const savedNames = localStorage.getItem(storageKey);
+        
+        if (savedNames) {
+          setAllowedClassNames(JSON.parse(savedNames));
+        } else {
+          // Default names based on school type
+          if (st && st.toLowerCase().includes('primaire')) {
+            const primaire = [
+              "1ere primaire", "2eme primaire", "3eme primaire",
+              "4eme primaire", "5eme primaire", "6eme primaire",
+            ];
+            setAllowedClassNames(primaire);
+            localStorage.setItem(storageKey, JSON.stringify(primaire));
+          } else if (st && st.toLowerCase().includes('second')) {
+            const secondaire = [
+              "1ere secondaire", "2eme secondaire", "3eme secondaire", "4eme secondaire",
+            ];
+            setAllowedClassNames(secondaire);
+            localStorage.setItem(storageKey, JSON.stringify(secondaire));
+          } else if (st && st.toLowerCase().includes('maternelle')) {
+            const maternelle = [
+              "1ere maternelle", "2eme maternelle", "3eme maternelle",
+            ];
+            setAllowedClassNames(maternelle);
+            localStorage.setItem(storageKey, JSON.stringify(maternelle));
+          } else {
+            setAllowedClassNames([]);
+          }
+        }
       } catch (err) { console.error(err); }
     };
     fetchSchoolType();
@@ -85,6 +101,39 @@ export default function SecretaryClassesPage() {
   const showToast = (message: string, type: string = "success") => {
     setToast({ show: true, message, type });
     setTimeout(() => setToast({ show: false, message: "", type: "success" }), 3000);
+  };
+
+  // Save class names to localStorage
+  const saveClassNames = (names: string[]) => {
+    setAllowedClassNames(names);
+    const storageKey = `classNames_${schoolType}`;
+    localStorage.setItem(storageKey, JSON.stringify(names));
+  };
+
+  // Add new class name
+  const handleAddClassName = () => {
+    if (!newClassName.trim()) return;
+    const updated = [...allowedClassNames, newClassName.trim()];
+    saveClassNames(updated);
+    setNewClassName('');
+    showToast('Classe ajoutée!', 'success');
+  };
+
+  // Edit class name
+  const handleEditClassName = (oldName: string, newName: string) => {
+    if (!newName.trim()) return;
+    const updated = allowedClassNames.map(n => n === oldName ? newName.trim() : n);
+    saveClassNames(updated);
+    setEditingClassName(null);
+    showToast('Classe modifiée!', 'success');
+  };
+
+  // Delete class name
+  const handleDeleteClassName = (name: string) => {
+    if (!confirm(`Supprimer "${name}" de la liste?`)) return;
+    const updated = allowedClassNames.filter(n => n !== name);
+    saveClassNames(updated);
+    showToast('Classe supprimée!', 'success');
   };
 
   const fetchClasses = async () => {
@@ -334,15 +383,18 @@ export default function SecretaryClassesPage() {
                 <label>Class Name</label>
                 {allowedClassNames && allowedClassNames.length > 0 ? (
                   <div>
-                    <select value={selectedClassName || ''} onChange={(e)=>{
-                      const v = e.target.value;
-                      setSelectedClassName(v);
-                      if(v !== 'OTHER') setClassName(v);
-                    }}>
-                      <option value="">Select class</option>
-                      {allowedClassNames.map(n => <option key={n} value={n}>{n}</option>)}
-                      <option value="OTHER">Other (custom)</option>
-                    </select>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <select value={selectedClassName || ''} onChange={(e)=>{
+                        const v = e.target.value;
+                        setSelectedClassName(v);
+                        if(v !== 'OTHER') setClassName(v);
+                      }}>
+                        <option value="">Select class</option>
+                        {allowedClassNames.map(n => <option key={n} value={n}>{n}</option>)}
+                        <option value="OTHER">Other (custom)</option>
+                      </select>
+                      <button type="button" onClick={() => setShowManageNames(true)} style={{ padding: '6px 12px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>⚙️ Gérer</button>
+                    </div>
                     {selectedClassName === 'OTHER' && (
                       <input type="text" value={className} onChange={e=>setClassName(e.target.value)} placeholder="Custom class name" />
                     )}
@@ -383,6 +435,61 @@ export default function SecretaryClassesPage() {
               <div className="form-actions">
                 <button className="btn-cancel" onClick={() => setShowModal(false)}>Cancel</button>
                 <button className="btn-save" onClick={handleCreateClass}>Create Class</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Class Names Management Modal */}
+      {showManageNames && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: 500 }}>
+            <div className="modal-header">
+              <h2>Gérer les noms de classes</h2>
+              <button className="modal-close" onClick={() => setShowManageNames(false)}>×</button>
+            </div>
+            <div style={{ padding: '16px', maxHeight: 400, overflowY: 'auto' }}>
+              <p style={{ marginBottom: 16, color: '#666' }}>Modifiez ou supprimez les noms de classes disponibles pour ce type d'école.</p>
+              
+              {/* List of class names with edit/delete */}
+              <div style={{ marginBottom: 20 }}>
+                {allowedClassNames.map((name, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '8px', background: '#f5f5f5', borderRadius: 4 }}>
+                    {editingClassName === name ? (
+                      <>
+                        <input
+                          type="text"
+                          value={newClassName}
+                          onChange={e => setNewClassName(e.target.value)}
+                          style={{ flex: 1, padding: '4px 8px', border: '1px solid #ccc', borderRadius: 4 }}
+                          autoFocus
+                        />
+                        <button onClick={() => handleEditClassName(name, newClassName)} style={{ padding: '4px 12px', background: '#28a745', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}><FaCheck /></button>
+                        <button onClick={() => { setEditingClassName(null); setNewClassName(''); }} style={{ padding: '4px 12px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}><FaTimes /></button>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ flex: 1, fontWeight: 500 }}>{name}</span>
+                        <button onClick={() => { setEditingClassName(name); setNewClassName(name); }} style={{ padding: '4px 12px', background: '#007bff', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}><FaPen /></button>
+                        <button onClick={() => handleDeleteClassName(name)} style={{ padding: '4px 12px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}><FaTrash /></button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Add new class name */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text"
+                  value={newClassName}
+                  onChange={e => setNewClassName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAddClassName()}
+                  placeholder="Nouvelle classe (ex: 5ème secondaire)"
+                  style={{ flex: 1, padding: '8px', border: '1px solid #ccc', borderRadius: 4 }}
+                />
+                <button onClick={handleAddClassName} style={{ padding: '8px 16px', background: '#28a745', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>+ Ajouter</button>
               </div>
             </div>
           </div>

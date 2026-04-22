@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { FaPlus, FaSearch, FaTimes } from "react-icons/fa";
-import { apiGet, apiPost } from "@/utils/api";
+import { FaPlus, FaSearch, FaTimes, FaPen, FaTrash, FaCheck } from "react-icons/fa";
+import { apiGet, apiPost, apiFetch } from "@/utils/api";
 import "@/app/dashboard/school/classes.css";
 
 interface Class {
@@ -43,6 +43,59 @@ export default function ClassesPage() {
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [selectedTeacherByClass, setSelectedTeacherByClass] = useState<Record<number, string>>({});
   const [assigningByClass, setAssigningByClass] = useState<Record<number, boolean>>({});
+  
+  // Class edit/delete state
+  const [editingClass, setEditingClass] = useState<Class | null>(null);
+  const [editClassName, setEditClassName] = useState('');
+  const [deletingClassId, setDeletingClassId] = useState<number | null>(null);
+  
+  const handleEditClass = (cls: Class) => {
+    setEditingClass(cls);
+    setEditClassName(cls.name);
+  };
+  
+  const handleSaveClassEdit = async () => {
+    if (!editingClass || !editClassName.trim()) return;
+    try {
+      await apiFetch(`/api/classes/${editingClass.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name: editClassName.trim() }),
+      });
+      fetchClasses(activeType);
+      setEditingClass(null);
+    } catch (err) {
+      console.error('Error updating class:', err);
+    }
+  };
+
+  const handleDeleteClass = async (cls: Class) => {
+    if (!confirm(`Supprimer la classe "${cls.name}" ?`)) return;
+    if (!cls.id) {
+      alert('ID de classe manquant. Rafraîchissez la page.');
+      return;
+    }
+    console.log('[DELETE] cls:', cls);
+    console.log('[DELETE] cls.id:', cls.id, 'typeof:', typeof cls.id);
+    const classId = Number(cls.id);
+    console.log('[DELETE] Parsed classId:', classId);
+    if (isNaN(classId) || classId <= 0) {
+      alert('ID de classe invalide: ' + cls.id + ' (parsed: ' + classId + ')');
+      return;
+    }
+    setDeletingClassId(classId);
+    console.log('[DELETE] Making DELETE request to /api/classes/' + classId);
+    try {
+      await apiFetch(`/api/classes/${classId}`, { method: 'DELETE' });
+      fetchClasses(activeType);
+    } catch (err: any) {
+      console.error('Erreur lors de la suppression:', err);
+      alert('Erreur lors de la suppression de la classe.');
+    } finally {
+      setDeletingClassId(null);
+    }
+  };
+  
+
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -155,7 +208,57 @@ export default function ClassesPage() {
   const requiresSecondaryOption =
     activeType === "secondaire" &&
     ["1ere secondaire", "2eme secondaire", "3eme secondaire", "4eme secondaire"].includes(selectedBaseClass);
-  const SECONDARY_OPTIONS = ["Littéraire", "Pédagogie", "Physique", "Scientifique", "Commerciale", "Autre..."];
+  
+  // Load secondary options from localStorage or use defaults
+  const [secondaryOptions, setSecondaryOptions] = useState<string[]>([
+    "Littéraire", "Pédagogie", "Physique", "Scientifique", "Commerciale", "Autre..."
+  ]);
+  const [showManageOptions, setShowManageOptions] = useState(false);
+  const [editingOption, setEditingOption] = useState<string | null>(null);
+  const [newOptionName, setNewOptionName] = useState('');
+  
+  useEffect(() => {
+    const saved = localStorage.getItem('secondaryOptions');
+    if (saved) {
+      try {
+        setSecondaryOptions(JSON.parse(saved));
+      } catch (e) {}
+    }
+  }, []);
+  
+  // Save custom option to list - only add complete strings (min 3 chars, no single letters)
+  const handleCustomOptionChange = (value: string) => {
+    setCustomSecondaryOption(value);
+  };
+  
+  const addOptionToList = () => {
+    const opt = customSecondaryOption.trim();
+    // Only add if not empty and not already in list
+    if (opt && !secondaryOptions.includes(opt)) {
+      const updated = [...secondaryOptions.filter(o => o !== 'Autre...'), opt, 'Autre...'];
+      setSecondaryOptions(updated);
+      localStorage.setItem('secondaryOptions', JSON.stringify(updated));
+      setSecondaryOption(opt);
+      setCustomSecondaryOption('');
+    }
+  };
+  
+  const handleEditOption = (oldName: string, newName: string) => {
+    if (!newName.trim()) return;
+    const updated = secondaryOptions.map(o => o === oldName ? newName.trim() : o);
+    setSecondaryOptions(updated);
+    localStorage.setItem('secondaryOptions', JSON.stringify(updated));
+    setEditingOption(null);
+    setNewOptionName('');
+  };
+  
+  const handleDeleteOption = (name: string) => {
+    if (!confirm(`Supprimer "${name}" de la liste?`)) return;
+    const updated = secondaryOptions.filter(o => o !== name);
+    setSecondaryOptions(updated);
+    localStorage.setItem('secondaryOptions', JSON.stringify(updated));
+  };
+  
   const effectiveSecondaryOption = secondaryOption === "Autre..."
     ? customSecondaryOption.trim()
     : secondaryOption;
@@ -285,6 +388,19 @@ export default function ClassesPage() {
             <div key={cls.id} className="class-card">
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <span>{cls.name}</span>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                  <button 
+                    onClick={() => handleEditClass(cls)} 
+                    style={{ padding: '4px 8px', background: '#007bff', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                    title="Modifier le nom"
+                  ><FaPen /></button>
+                  <button 
+                    onClick={() => handleDeleteClass(cls)} 
+                    disabled={deletingClassId === cls.id}
+                    style={{ padding: '4px 8px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                    title="Supprimer la classe"
+                  >{deletingClassId === cls.id ? '...' : <FaTrash />}</button>
+                </div>
                 {(cls.main_teacher_name || selectedTeacherByClass[cls.id]) && (
                   <span style={{ background: '#dbeafe', color: '#1e40af', padding: '2px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 500, marginLeft: 'auto' }}>
                     <i className="fa fa-user" style={{ marginRight: '4px' }}></i>
@@ -354,29 +470,35 @@ export default function ClassesPage() {
             </div>
             {requiresSecondaryOption && (
               <div className="form-group">
-                <label>Option (1ère à 3ème secondaire) *</label>
-                <select
-                  value={secondaryOption}
-                  onChange={(e) => {
-                    setSecondaryOption(e.target.value);
-                    if (e.target.value !== "Autre...") setCustomSecondaryOption("");
-                  }}
-                  className="full-width"
-                >
-                  <option value="">Sélectionner une option</option>
-                  {SECONDARY_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>
-                {secondaryOption === "Autre..." && (
-                  <input
-                    type="text"
-                    value={customSecondaryOption}
-                    onChange={(e) => setCustomSecondaryOption(e.target.value)}
-                    placeholder="Ex: Math-Info, Biochimie, etc."
+                <label>Option (1ère à 4ème secondaire) *</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <select
+                    value={secondaryOption}
+                    onChange={(e) => {
+                      setSecondaryOption(e.target.value);
+                      if (e.target.value !== "Autre...") setCustomSecondaryOption("");
+                    }}
                     className="full-width"
-                    style={{ marginTop: 8 }}
-                  />
+                  >
+                    <option value="">Sélectionner une option</option>
+                    {secondaryOptions.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={() => setShowManageOptions(true)} style={{ padding: '6px 12px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap' }}>⚙️ Gérer</button>
+                </div>
+                {secondaryOption === "Autre..." && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <input
+                      type="text"
+                      value={customSecondaryOption}
+                      onChange={(e) => handleCustomOptionChange(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addOptionToList()}
+                      placeholder="Nouvelle option"
+                      className="full-width"
+                    />
+                    <button type="button" onClick={addOptionToList} disabled={!customSecondaryOption.trim()} style={{ padding: '6px 12px', background: customSecondaryOption.trim() ? '#28a745' : '#ccc', color: '#fff', border: 'none', borderRadius: 4, cursor: customSecondaryOption.trim() ? 'pointer' : 'not-allowed' }}>+ Ajouter</button>
+                  </div>
                 )}
               </div>
             )}
@@ -397,6 +519,104 @@ export default function ClassesPage() {
                 {creating ? '⏳' : <FaPlus />}
                 {creating ? "Creating..." : "Create Class"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Options Management Modal */}
+      {showManageOptions && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: 500 }}>
+            <div className="modal-header">
+              <h2>Gérer les options</h2>
+              <button className="modal-close" onClick={() => setShowManageOptions(false)}>×</button>
+            </div>
+            <div style={{ padding: '16px', maxHeight: 400, overflowY: 'auto' }}>
+              <p style={{ marginBottom: 16, color: '#666' }}>Modifiez ou supprimez les options disponibles.</p>
+              
+              {/* List of options with edit/delete */}
+              <div style={{ marginBottom: 20 }}>
+                {secondaryOptions.filter(o => o !== 'Autre...').map((name, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '8px', background: '#f5f5f5', borderRadius: 4 }}>
+                    {editingOption === name ? (
+                      <>
+                        <input
+                          type="text"
+                          value={newOptionName}
+                          onChange={e => setNewOptionName(e.target.value)}
+                          style={{ flex: 1, padding: '4px 8px', border: '1px solid #ccc', borderRadius: 4 }}
+                          autoFocus
+                        />
+                        <button onClick={() => handleEditOption(name, newOptionName)} style={{ padding: '4px 12px', background: '#28a745', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}><FaCheck /></button>
+                        <button onClick={() => { setEditingOption(null); setNewOptionName(''); }} style={{ padding: '4px 12px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}><FaTimes /></button>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ flex: 1, fontWeight: 500 }}>{name}</span>
+                        <button onClick={() => { setEditingOption(name); setNewOptionName(name); }} style={{ padding: '4px 12px', background: '#007bff', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}><FaPen /></button>
+                        <button onClick={() => handleDeleteOption(name)} style={{ padding: '4px 12px', background: '#dc3545', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}><FaTrash /></button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Add new option */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text"
+                  value={newOptionName}
+                  onChange={e => setNewOptionName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && newOptionName.trim() && !secondaryOptions.includes(newOptionName.trim())) {
+                      handleEditOption('', newOptionName);
+                    }
+                  }}
+                  placeholder="Nouvelle option"
+                  style={{ flex: 1, padding: '8px', border: '1px solid #ccc', borderRadius: 4 }}
+                />
+                <button 
+                  onClick={() => {
+                    if (newOptionName.trim() && !secondaryOptions.includes(newOptionName.trim())) {
+                      const updated = [...secondaryOptions, newOptionName.trim()];
+                      setSecondaryOptions(updated);
+                      localStorage.setItem('secondaryOptions', JSON.stringify(updated));
+                      setNewOptionName('');
+                    }
+                  }} 
+                  disabled={!newOptionName.trim() || secondaryOptions.includes(newOptionName.trim())}
+                  style={{ padding: '8px 16px', background: newOptionName.trim() ? '#28a745' : '#ccc', color: '#fff', border: 'none', borderRadius: 4, cursor: newOptionName.trim() ? 'pointer' : 'not-allowed' }}
+                >+ Ajouter</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Class Modal */}
+      {editingClass && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: 400 }}>
+            <div className="modal-header">
+              <h2>Edit Class</h2>
+              <button className="modal-close" onClick={() => setEditingClass(null)}>×</button>
+            </div>
+            <div style={{ padding: '16px' }}>
+              <div className="form-group">
+                <label>Class Name</label>
+                <input
+                  type="text"
+                  value={editClassName}
+                  onChange={(e) => setEditClassName(e.target.value)}
+                  className="full-width"
+                  autoFocus
+                />
+              </div>
+              <div className="form-actions">
+                <button className="btn-cancel" onClick={() => setEditingClass(null)}>Cancel</button>
+                <button className="btn-save" onClick={handleSaveClassEdit}>Save</button>
+              </div>
             </div>
           </div>
         </div>

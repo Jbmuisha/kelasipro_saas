@@ -39,6 +39,25 @@ export default function AdminSchoolsPage() {
   });
   const [editingSchool, setEditingSchool] = useState<School | null>(null);
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+  
+  // Dynamic school types
+  const defaultSchoolTypes = ["primaire", "secondaire", "maternelle", "mixed"];
+  const [schoolTypes, setSchoolTypes] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('customSchoolTypes');
+      return saved ? JSON.parse(saved) : defaultSchoolTypes;
+    }
+    return defaultSchoolTypes;
+  });
+  const [showTypesModal, setShowTypesModal] = useState(false);
+  const [newTypeName, setNewTypeName] = useState("");
+
+  // Save school types to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('customSchoolTypes', JSON.stringify(schoolTypes));
+    }
+  }, [schoolTypes]);
 
   // ================= SHOW TOAST =================
   const showToast = (message: string, type: string = "success") => {
@@ -326,11 +345,20 @@ export default function AdminSchoolsPage() {
                   }
                   required
                 >
-                  <option value="primaire">Primaire</option>
-                  <option value="secondaire">Secondaire</option>
-                  <option value="maternelle">Maternelle</option>
-                  <option value="mixed">Mixed (All Types)</option>
+                  {schoolTypes.map(type => (
+                    <option key={type} value={type}>
+                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                    </option>
+                  ))}
                 </select>
+                <button 
+                  type="button" 
+                  onClick={() => setShowTypesModal(true)}
+                  style={{ marginLeft: 8, padding: "4px 8px", fontSize: 12, background: "#e5e7eb", border: "none", borderRadius: 4, cursor: "pointer" }}
+                  title="Gérer les types d'école"
+                >
+                  ⚙️
+                </button>
               </div>
 
               {/* ACTIONS */}

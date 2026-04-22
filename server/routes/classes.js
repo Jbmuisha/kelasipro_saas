@@ -154,13 +154,17 @@ router.put('/:classId', requireAuth, requireAdmin, async (req, res) => {
 // ================= DELETE CLASS =================
 router.delete('/:classId', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { classId } = req.params;
+    const classId = req.params.classId;
+    const numericClassId = parseInt(classId);
+    if (isNaN(numericClassId)) {
+      return res.status(400).json({ error: 'Class ID must be a valid number' });
+    }
     const requester = req.requester;
 
     const { data: current, error: getError } = await supabaseAdmin
       .from('classes')
       .select('*')
-      .eq('id', classId)
+      .eq('id', numericClassId)
       .single();
 
     if (getError) throw getError;
@@ -170,18 +174,64 @@ router.delete('/:classId', requireAuth, requireAdmin, async (req, res) => {
       return res.status(403).json({ error: 'Cannot delete other schools classes' });
     }
 
-    const { error } = await supabaseAdmin
+    // Delete all related records first
+    const relatedTables = [
+      'teacher_classes',
+      'course_classes',
+      'course_class_links'
+    ];
+    
+    for (const table of relatedTables) {
+      try {
+        const { error: delErr } = await supabaseAdmin.from(table).delete().eq('class_id', numericClassId);
+        if (delErr) console.log('[DELETE RELATED]', table, 'err:', delErr.message);
+      } catch (e) {
+        console.log('[DELETE RELATED]', table, 'skip:', e.message);
+      }
+    }
+    
+    // Clear class_id from users (students) who have this class
+    try {
+      const { error: updErr } = await supabaseAdmin.from('users').update({ class_id: null }).eq('class_id', numericClassId);
+      if (updErr) console.log('[DELETE RELATED] users err:', updErr.message);
+    } catch (e) {
+      console.log('[DELETE RELATED] users skip:', e.message);
+    }
+
+    // First, try to update the class to be inactive (soft delete)
+    try {
+      const { error: softErr } = await supabaseAdmin
+        .from('classes')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', numericClassId);
+      
+      if (!softErr) {
+        console.log('[DELETE CLASS] Soft delete successful');
+        return res.json({ message: 'Class deleted successfully' });
+      }
+      console.log('[DELETE CLASS] Soft delete failed:', softErr.message);
+    } catch (softFail) {
+      console.log('[DELETE CLASS] Soft delete error:', softFail.message);
+    }
+    
+    // Try direct delete
+    let { error } = await supabaseAdmin
       .from('classes')
       .delete()
-      .eq('id', classId);
+      .eq('id', numericClassId);
 
-    if (error) throw error;
+    if (error) {
+      console.log('[DELETE CLASS] direct delete failed:', error.message);
+      console.log('[DELETE CLASS] Error details:', JSON.stringify(error));
+      throw error;
+    }
 
     res.json({ message: 'Class deleted successfully' });
 
   } catch (err) {
     console.error('[DELETE CLASS ERROR]', err.message);
-    res.status(500).json({ error: 'Failed to delete class' });
+    console.error('[DELETE CLASS FULL ERROR]', err);
+    res.status(500).json({ error: err.message || 'Failed to delete class' });
   }
 });
 
