@@ -135,6 +135,55 @@ CREATE TABLE IF NOT EXISTS user_online_status (
   is_online BOOLEAN DEFAULT FALSE
 );
 
+-- ================= SUBSCRIPTIONS TABLE =================
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id SERIAL PRIMARY KEY,
+  school_id INTEGER REFERENCES schools(id) ON DELETE CASCADE,
+  plan_type VARCHAR(50) NOT NULL DEFAULT 'basic',
+  start_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  end_date TIMESTAMP NOT NULL,
+  status VARCHAR(50) NOT NULL DEFAULT 'active',
+  payment_status VARCHAR(50) NOT NULL DEFAULT 'pending',
+  amount DECIMAL(10,2) NOT NULL,
+  payment_method VARCHAR(50),
+  transaction_id VARCHAR(255),
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ================= SUBSCRIPTION_PLANS TABLE =================
+CREATE TABLE IF NOT EXISTS subscription_plans (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  price DECIMAL(10,2) NOT NULL,
+  duration_months INTEGER NOT NULL DEFAULT 1,
+  features TEXT,
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ================= CONTRACTS TABLE =================
+CREATE TABLE IF NOT EXISTS contracts (
+  id SERIAL PRIMARY KEY,
+  school_id INTEGER REFERENCES schools(id) ON DELETE CASCADE,
+  subscription_id INTEGER REFERENCES subscriptions(id) ON DELETE SET NULL,
+  contract_number VARCHAR(100) UNIQUE,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  terms TEXT,
+  status VARCHAR(50) DEFAULT 'draft',
+  signed_by_school BOOLEAN DEFAULT FALSE,
+  signed_by_platform BOOLEAN DEFAULT FALSE,
+  school_signature_date TIMESTAMP,
+  platform_signature_date TIMESTAMP,
+  pdf_url TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ================= CREATE INDEXES =================
 CREATE INDEX IF NOT EXISTS idx_users_school_id ON users(school_id);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
@@ -147,9 +196,22 @@ CREATE INDEX IF NOT EXISTS idx_messages_receiver_id ON messages(receiver_id);
 CREATE INDEX IF NOT EXISTS idx_schedules_class_id ON schedules(class_id);
 CREATE INDEX IF NOT EXISTS idx_parent_student_parent_id ON parent_student(parent_id);
 CREATE INDEX IF NOT EXISTS idx_parent_student_student_id ON parent_student(student_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_school_id ON subscriptions(school_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_contracts_school_id ON contracts(school_id);
 
 -- ================= INSERT SUPER ADMIN =================
 -- Password: jbGolden2912#
 INSERT INTO users (name, email, password, role, unique_id) 
 VALUES ('jboyGolden', 'jbmuisha@gmail.com', '$2a$10$rQEY6bQKK3Z0vZ5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5', 'SUPER_ADMIN', 'super_admin_1')
 ON CONFLICT (email) DO NOTHING;
+
+-- ================= INSERT DEFAULT SUBSCRIPTION PLANS =================
+INSERT INTO subscription_plans (name, description, price, duration_months, features) VALUES
+('Basic Monthly', 'Basic plan for small schools with up to 100 students', 50.00, 1, '{"max_students": 100, "max_teachers": 10, "support": "email"}'),
+('Standard Monthly', 'Standard plan for medium schools with up to 500 students', 100.00, 1, '{"max_students": 500, "max_teachers": 30, "support": "email+phone", "reports": true}'),
+('Premium Monthly', 'Premium plan for large schools with unlimited students', 200.00, 1, '{"max_students": "unlimited", "max_teachers": "unlimited", "support": "priority", "reports": true, "api_access": true}'),
+('Basic Yearly', 'Basic plan for small schools - yearly billing (2 months free)', 500.00, 12, '{"max_students": 100, "max_teachers": 10, "support": "email"}'),
+('Standard Yearly', 'Standard plan for medium schools - yearly billing (2 months free)', 1000.00, 12, '{"max_students": 500, "max_teachers": 30, "support": "email+phone", "reports": true}'),
+('Premium Yearly', 'Premium plan for large schools - yearly billing (2 months free)', 2000.00, 12, '{"max_students": "unlimited", "max_teachers": "unlimited", "support": "priority", "reports": true, "api_access": true}')
+ON CONFLICT DO NOTHING;

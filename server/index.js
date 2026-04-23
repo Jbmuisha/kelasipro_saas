@@ -28,6 +28,7 @@ const gradesRoutes = require('./routes/grades');
 const messagesRoutes = require('./routes/messages');
 const schedulesRoutes = require('./routes/schedules');
 const uploadsRoutes = require('./routes/uploads');
+const subscriptionsRoutes = require('./routes/subscriptions');
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -40,6 +41,7 @@ app.use('/api/grades', gradesRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/schedules', schedulesRoutes);
 app.use('/api/uploads', uploadsRoutes);
+app.use('/api/subscriptions', subscriptionsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

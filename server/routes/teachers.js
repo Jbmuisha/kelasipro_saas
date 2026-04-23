@@ -12,7 +12,7 @@ router.get('/', requireAuth, async (req, res) => {
 
     let query = supabaseAdmin
       .from('users')
-      .select('*')
+      .select('id, name, email, role, profile_image, school_id, class_id')
       .in('role', ['TEACHER', 'ASSISTANT']);
 
     if (requester.role === 'SCHOOL_ADMIN') {
@@ -24,8 +24,54 @@ router.get('/', requireAuth, async (req, res) => {
     const { data, error } = await query.order('name');
     if (error) throw error;
 
-    // Get courses for each teacher
+    // Get school info for each teacher
     if (data && data.length > 0) {
+      const schoolIds = [...new Set(data.map(t => t.school_id).filter(Boolean))];
+      
+      if (schoolIds.length > 0) {
+        const { data: schools } = await supabaseAdmin
+          .from('schools')
+          .select('id, name, school_type')
+          .in('id', schoolIds);
+        
+        const schoolMap = (schools || []).reduce((acc, school) => {
+          acc[school.id] = school;
+          return acc;
+        }, {});
+        
+        // Attach school info to teachers
+        data.forEach(teacher => {
+          if (teacher.school_id && schoolMap[teacher.school_id]) {
+            teacher.school_name = schoolMap[teacher.school_id].name;
+            teacher.school_type_from_school = schoolMap[teacher.school_id].school_type;
+          }
+        });
+      }
+      
+      // Get class info for principal classes
+      const classIds = [...new Set(data.map(t => t.class_id).filter(Boolean))];
+      
+      if (classIds.length > 0) {
+        const { data: classes } = await supabaseAdmin
+          .from('classes')
+          .select('id, name, level')
+          .in('id', classIds);
+        
+        const classMap = (classes || []).reduce((acc, cls) => {
+          acc[cls.id] = cls;
+          return acc;
+        }, {});
+        
+        // Attach class info to teachers
+        data.forEach(teacher => {
+          if (teacher.class_id && classMap[teacher.class_id]) {
+            teacher.principal_class_name = classMap[teacher.class_id].name;
+            teacher.principal_class_level = classMap[teacher.class_id].level;
+          }
+        });
+      }
+      
+      // Get courses for each teacher
       const teacherIds = data.map(t => t.id);
       const { data: courseLinks } = await supabaseAdmin
         .from('courses')
@@ -38,6 +84,8 @@ router.get('/', requireAuth, async (req, res) => {
           .filter(c => c.teacher_id === teacher.id)
           .map(c => ({ id: c.id, name: c.name }));
       });
+      
+      console.log('[GET TEACHERS] Sample teacher:', JSON.stringify(data[0], null, 2));
     }
 
     res.json({ teachers: data });

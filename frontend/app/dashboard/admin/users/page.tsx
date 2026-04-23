@@ -16,12 +16,13 @@ type User = {
   name: string;
   email: string;
   role: string;
-  school?: string;
   status?: string;
-  createdAt?: string;
   password?: string;
   profile_image?: string;
   unique_id?: string;
+  school_id?: string;
+  admin_level?: string;
+  created_at?: string;
 };
 
 type School = {
@@ -37,22 +38,23 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showModal, setShowModal] = useState(false);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState<User>({
     id: "",
     name: "",
     email: "",
-    role: "TEACHER",
+    role: "SUPER_ADMIN",
     password: "",
-    school: "",
+    school_id: "",
     status: "active",
     profile_image: "",
     unique_id: "",
-  } as any);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  });
+  const [editingPassword, setEditingPassword] = useState<string>("");
   const [schools, setSchools] = useState<School[]>([]);
   const [selectedSchoolType, setSelectedSchoolType] = useState<string>("");
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   const showToast = (message: string, type: string = "success") => {
     setToast({ show: true, message, type });
@@ -61,12 +63,11 @@ export default function AdminUsersPage() {
 
   const fetchSchools = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/schools`);
-      if (!response.ok) throw new Error("Failed to fetch schools");
-      const data = await response.json();
+      const res = await fetch(`${API_URL}/api/schools`);
+      if (!res.ok) return;
+      const data = await res.json();
       setSchools(data.schools || []);
-    } catch (err) {
-      console.error("Fetch schools error:", err);
+    } catch {
       setSchools([]);
     }
   };
@@ -76,20 +77,23 @@ export default function AdminUsersPage() {
       id: "",
       name: "",
       email: "",
-      role: "TEACHER",
+      role: "SUPER_ADMIN",
       password: "",
-      school: "",
+      school_id: "",
       status: "active",
       profile_image: "",
       unique_id: "",
-    } as any);
+    });
+    setEditingPassword("");
+    setEditingUser(null);
+    setSelectedSchoolType("");
   };
 
   const fetchUsers = async () => {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`${API_URL}/api/users/`);
+      const response = await fetch(`${API_URL}/api/users?role=SUPER_ADMIN`);
       if (!response.ok) throw new Error(`Failed to fetch users: ${response.status}`);
       const data = await response.json();
       if (!data || !data.users) throw new Error("Invalid response from server");
@@ -100,10 +104,10 @@ export default function AdminUsersPage() {
         email: user.email || "",
         role: user.role || "",
         status: user.status || "active",
-        school: user.school_id || "",
+        school_id: user.school_id || "",
         profile_image: user.profile_image || "",
         unique_id: user.unique_id || "",
-        createdAt: user.created_at ? new Date(user.created_at).toLocaleDateString() : "",
+        created_at: user.created_at ? new Date(user.created_at).toLocaleDateString() : "",
       }));
       setUsers(transformedUsers);
     } catch (err) {
@@ -118,22 +122,31 @@ export default function AdminUsersPage() {
   const handleUpdateUser = async () => {
     if (!editingUser) return;
     try {
-      const profileImageUrl = (formData as any).profile_preview || null;
-      const finalProfileImage = profileImageUrl || editingUser.profile_image;
-      
+      const updateData: any = {
+        name: formData.name,
+        email: formData.email,
+        status: formData.status,
+        school_id: formData.school_id,
+      };
+
+      // Only include password if it was provided
+      if (editingPassword) {
+        updateData.password = editingPassword;
+      }
+
+      // Only include admin_level if not SUPER_ADMIN
+      if (formData.role !== "SUPER_ADMIN" && selectedSchoolType) {
+        updateData.admin_level = selectedSchoolType;
+      }
+
       const response = await fetch(`${API_URL}/api/users/${editingUser.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...editingUser,
-          profile_image: finalProfileImage,
-          id: parseInt(editingUser.id)
-        }),
+        body: JSON.stringify(updateData),
       });
       
       if (!response.ok) throw new Error(`Failed to update user: ${response.status}`);
       fetchUsers();
-      setEditingUser(null);
       setShowModal(false);
       showToast("User updated successfully!", "success");
     } catch (err) {
@@ -144,18 +157,18 @@ export default function AdminUsersPage() {
 
   const handleCreateUser = async () => {
     try {
-      const profileImageUrl = (formData as any).profile_preview || null;
-
-      const requestData = {
+      const requestData: any = {
         name: formData.name,
         email: formData.email,
         role: formData.role,
         password: formData.password,
         status: formData.status,
-        profile_image: profileImageUrl,
-        school_id: formData.role === "SUPER_ADMIN" ? null : formData.school,
-        admin_level: formData.role === "SCHOOL_ADMIN" ? ((formData as any).admin_level || (selectedSchoolType !== 'mixed' ? selectedSchoolType : null)) : null
+        school_id: formData.role === "SUPER_ADMIN" ? null : formData.school_id,
       };
+
+      if (formData.role === "SCHOOL_ADMIN" && selectedSchoolType) {
+        requestData.admin_level = selectedSchoolType;
+      }
       
       const response = await fetch(`${API_URL}/api/users/`, {
         method: "POST",
@@ -193,23 +206,34 @@ export default function AdminUsersPage() {
 
   const openCreateModal = () => {
     resetForm();
-    setEditingUser(null);
     setShowModal(true);
   };
 
   const openEditModal = (user: User) => {
     setEditingUser(user);
+    setFormData({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      school_id: user.school_id || "",
+      status: user.status || "active",
+      profile_image: user.profile_image || "",
+      unique_id: user.unique_id || "",
+    });
+    setEditingPassword("");
+    setSelectedSchoolType(user.admin_level || "");
     setShowModal(true);
   };
 
   useEffect(() => {
-    const userStr = localStorage.getItem('user');
+    const userStr = localStorage.getItem("user");
     if (userStr) {
       try {
         const user = JSON.parse(userStr);
         setCurrentUser(user);
       } catch (e) {
-        console.error('Failed to parse user from localStorage', e);
+        console.error("Failed to parse user from localStorage", e);
       }
     }
     fetchUsers();
@@ -219,9 +243,11 @@ export default function AdminUsersPage() {
   return (
     <div className="users-page">
       <div className="page-header">
-        <h1>Users Management</h1>
+        <h1>Super Admins Management</h1>
         <div className="header-actions">
-          <button className="btn-add" onClick={openCreateModal}>+ Add User</button>
+          <button className="btn-add" onClick={openCreateModal}>
+            + Add User
+          </button>
         </div>
       </div>
 
@@ -250,36 +276,62 @@ export default function AdminUsersPage() {
                     <div className="profile-cell">
                       {user.profile_image ? (
                         <img
-                          src={user.profile_image || ''}
+                          src={user.profile_image}
                           alt={user.name}
                           className="profile-thumb"
-                          style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '50%' }}
-                          onError={(e) => { (e.target as HTMLImageElement).src = ''; }}
+                          style={{
+                            width: "50px",
+                            height: "50px",
+                            objectFit: "cover",
+                            borderRadius: "50%",
+                          }}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "";
+                          }}
                         />
                       ) : (
-                        <div className="profile-placeholder" style={{ width: '50px', height: '50px', borderRadius: '50%', backgroundColor: '#ddd', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', color: '#666' }}>
-                          {user.name?.charAt(0)?.toUpperCase() || '?'}
+                        <div
+                          className="profile-placeholder"
+                          style={{
+                            width: "50px",
+                            height: "50px",
+                            borderRadius: "50%",
+                            backgroundColor: "#ddd",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "20px",
+                            color: "#666",
+                          }}
+                        >
+                          {user.name?.charAt(0).toUpperCase() || "?"}
                         </div>
                       )}
                     </div>
                   </td>
                   <td>{user.name}</td>
                   <td>
-                    {user.unique_id && <div><strong>ID:</strong> {user.unique_id}</div>}
+                    {user.unique_id && <div>
+                      <strong>ID:</strong> {user.unique_id}
+                    </div>}
                     {user.email && <div>{user.email}</div>}
                   </td>
                   <td>
                     <span className={`role-badge ${user.role}`}>{user.role}</span>
                   </td>
-                  <td>{user.school || "-"}</td>
+                  <td>{user.school_id || "-"}</td>
                   <td>
-                    <span className={`status-badge ${user.status}`}>{user.status}</span>
+                    <span className={`status-badge ${user.status || 'active'}`}>{user.status || 'active'}</span>
                   </td>
-                  <td>{user.createdAt}</td>
+                  <td>{user.created_at}</td>
                   <td>
                     <div className="actions">
-                      <button className="btn-edit" onClick={() => openEditModal(user)}>Edit</button>
-                      <button className="btn-delete" onClick={() => handleDeleteUser(user.id)}>Delete</button>
+                      <button className="btn-edit" onClick={() => openEditModal(user)}>
+                        Edit
+                      </button>
+                      <button className="btn-delete" onClick={() => handleDeleteUser(user.id)}>
+                        Delete
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -292,7 +344,11 @@ export default function AdminUsersPage() {
       {!loading && users.length === 0 && <p className="no-data">No users found.</p>}
 
       {toast.show && (
-        <Toast message={toast.message} type={toast.type} onClose={() => setToast({ show: false, message: "", type: "success" })} />
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({ show: false, message: "", type: "success" })}
+        />
       )}
 
       {showModal && (
@@ -300,18 +356,18 @@ export default function AdminUsersPage() {
           <div className="modal-content">
             <div className="modal-header">
               <h2>{editingUser ? "Edit User" : "Create User"}</h2>
-              <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
+              <button className="modal-close" onClick={() => setShowModal(false)}>
+                ×
+              </button>
             </div>
 
             <div className="user-form">
               <div className="form-group">
                 <label>Name</label>
                 <input
-                  value={editingUser ? editingUser.name : formData.name}
+                  value={formData.name}
                   onChange={(e) =>
-                    editingUser
-                      ? setEditingUser({ ...editingUser, name: e.target.value })
-                      : setFormData({ ...formData, name: e.target.value })
+                    setFormData({ ...formData, name: e.target.value })
                   }
                 />
               </div>
@@ -319,11 +375,9 @@ export default function AdminUsersPage() {
               <div className="form-group">
                 <label>Email</label>
                 <input
-                  value={editingUser ? editingUser.email : formData.email}
+                  value={formData.email}
                   onChange={(e) =>
-                    editingUser
-                      ? setEditingUser({ ...editingUser, email: e.target.value })
-                      : setFormData({ ...formData, email: e.target.value })
+                    setFormData({ ...formData, email: e.target.value })
                   }
                 />
               </div>
@@ -332,12 +386,8 @@ export default function AdminUsersPage() {
                 <label>Password</label>
                 <input
                   type="password"
-                  value={editingUser ? editingUser.password || "" : formData.password}
-                  onChange={(e) =>
-                    editingUser
-                      ? setEditingUser({ ...editingUser, password: e.target.value })
-                      : setFormData({ ...formData, password: e.target.value })
-                  }
+                  value={editingPassword}
+                  onChange={(e) => setEditingPassword(e.target.value)}
                   placeholder={editingUser ? "Leave blank to keep current password" : ""}
                 />
               </div>
@@ -349,23 +399,21 @@ export default function AdminUsersPage() {
                   onChange={(e) => {
                     const newRole = e.target.value;
                     if (editingUser) {
-                      setEditingUser({ ...editingUser, role: newRole });
+                      setEditingUser({ ...editingUser, role: newRole } as any);
                     } else {
-                      setFormData({ ...formData, role: newRole });
+                      setFormData({ ...formData, role: newRole } as any);
                     }
                   }}
                 >
-                  {currentUser?.role === 'SUPER_ADMIN' && (
-                    <option value="SCHOOL_ADMIN">School Admin</option>
-                  )}
-                  {currentUser?.role === 'SCHOOL_ADMIN' && (
+                  <option value="SUPER_ADMIN">Super Admin</option>
+                  {currentUser?.role === "SCHOOL_ADMIN" && (
                     <>
                       <option value="TEACHER">Teacher</option>
                       <option value="SECRETARY">Secretary</option>
                       <option value="ASSISTANT">Assistant</option>
                     </>
                   )}
-                  {currentUser?.role === 'SECRETARY' && (
+                  {currentUser?.role === "SECRETARY" && (
                     <>
                       <option value="STUDENT">Student</option>
                       <option value="PARENT">Parent</option>
@@ -374,27 +422,26 @@ export default function AdminUsersPage() {
                 </select>
               </div>
 
-              {(editingUser?.role !== "SUPER_ADMIN" && formData.role !== "SUPER_ADMIN") && (
+              {(editingUser?.role !== "SUPER_ADMIN" || formData.role !== "SUPER_ADMIN") && (
                 <div className="form-group">
                   <label>School</label>
                   <select
-                    value={editingUser ? editingUser.school : formData.school}
+                    value={editingUser ? editingUser.school_id : formData.school_id}
                     onChange={(e) => {
-                      const newSchool = e.target.value;
-                      const selectedSchool = schools.find(s => s.id === newSchool);
-                      const schoolType = selectedSchool?.school_type || "";
-                      setSelectedSchoolType(schoolType);
+                      const newSchoolId = e.target.value;
                       if (editingUser) {
-                        setEditingUser({ ...editingUser, school: newSchool } as any);
+                        setEditingUser({ ...(editingUser as any), school_id: newSchoolId } as any);
                       } else {
-                        setFormData({ ...formData, school: newSchool } as any);
+                        setFormData({ ...formData, school_id: newSchoolId } as any);
                       }
                     }}
-                    required={formData.role !== "SUPER_ADMIN"}
+                    required={editingUser?.role !== "SUPER_ADMIN" && formData.role !== "SUPER_ADMIN"}
                   >
                     <option value="">Select School</option>
                     {schools.map((school) => (
-                      <option key={school.id} value={school.id}>{school.name}</option>
+                      <option key={school.id} value={school.id}>
+                        {school.name} ({school.school_type || "mixed"})
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -403,15 +450,26 @@ export default function AdminUsersPage() {
               {((editingUser?.role === "SCHOOL_ADMIN") || (formData.role === "SCHOOL_ADMIN")) && (
                 <div className="form-group">
                   <label>Admin Level</label>
-                  {(selectedSchoolType && selectedSchoolType !== "mixed") ? (
+                  {selectedSchoolType && selectedSchoolType !== "mixed" ? (
                     <div className="auto-level">
                       <span className="auto-level-badge">{selectedSchoolType}</span>
                       <small className="form-hint">This school is {selectedSchoolType}</small>
-                      <input type="hidden" name="admin_level" value={selectedSchoolType} />
+                      <input
+                        type="hidden"
+                        name="admin_level"
+                        value={selectedSchoolType}
+                        onChange={(e) => {
+                          if (editingUser) {
+                            setEditingUser({ ...(editingUser as any), admin_level: e.target.value } as any);
+                          } else {
+                            setFormData({ ...formData, admin_level: e.target.value } as any);
+                          }
+                        }}
+                      />
                     </div>
                   ) : (
                     <select
-                      value={(editingUser as any)?.admin_level || (formData as any).admin_level || ''}
+                      value={(editingUser as any)?.admin_level || (formData as any).admin_level || ""}
                       onChange={(e) => {
                         const v = e.target.value;
                         if (editingUser) {
@@ -425,7 +483,9 @@ export default function AdminUsersPage() {
                       <option value="maternelle">Maternelle</option>
                       <option value="primaire">Primaire</option>
                       <option value="secondaire">Secondaire</option>
-                      {selectedSchoolType === "mixed" && <option value="mixed">Mixed (All Levels)</option>}
+                      {selectedSchoolType === "mixed" && (
+                        <option value="mixed">Mixed (All Levels)</option>
+                      )}
                     </select>
                   )}
                 </div>
@@ -437,8 +497,8 @@ export default function AdminUsersPage() {
                   value={editingUser ? editingUser.status : formData.status}
                   onChange={(e) =>
                     editingUser
-                      ? setEditingUser({ ...editingUser, status: e.target.value })
-                      : setFormData({ ...formData, status: e.target.value })
+                      ? setEditingUser({ ...(editingUser as any), status: e.target.value } as any)
+                      : setFormData({ ...formData, status: e.target.value } as any)
                   }
                 >
                   <option value="active">Active</option>
@@ -447,7 +507,9 @@ export default function AdminUsersPage() {
               </div>
 
               <div className="form-actions">
-                <button className="btn-cancel" onClick={() => setShowModal(false)}>Cancel</button>
+                <button className="btn-cancel" onClick={() => setShowModal(false)}>
+                  Cancel
+                </button>
                 <button className="btn-save" onClick={editingUser ? handleUpdateUser : handleCreateUser}>
                   {editingUser ? "Save Changes" : "Create User"}
                 </button>

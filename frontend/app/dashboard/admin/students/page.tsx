@@ -1,9 +1,9 @@
 "use client";
 import React, { useEffect, useState, useMemo } from 'react';
+import { useAuth } from '@/utils/auth';
+// Component for admin to manage students in primaire and secondaire schools
 
-import { setImpersonation, useAuth } from '@/utils/auth';
-
-type Teacher = {
+type Student = {
   id: number;
   name: string;
   email?: string;
@@ -12,21 +12,22 @@ type Teacher = {
   school_id?: number;
   school_name?: string;
   school_type?: string;
-  school_type_from_school?: string;
-  principal_class_name?: string;
-  principal_class_level?: string;
+  class_id?: number;
+  class_name?: string;
+  class_level?: string;
+  parents?: { id: number; name: string; email?: string }[];
 };
 
-const getSchoolType = (teacher: Teacher) => {
-  return teacher.school_type_from_school || teacher.school_type || 'Unknown';
+const getSchoolType = (student: Student) => {
+  return student.school_type || 'Unknown';
 };
 
-type SortField = 'name' | 'email' | 'school_name';
+type SortField = 'name' | 'email' | 'school_name' | 'class_name';
 type SortOrder = 'asc' | 'desc';
 
-export default function AdminTeachersPage() {
+export default function AdminStudentsPage() {
   const { user } = useAuth();
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('name');
@@ -35,14 +36,14 @@ export default function AdminTeachersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  const fetchTeachers = async () => {
+  const fetchStudents = async () => {
     setLoading(true);
     setError(null);
     try {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('Unauthorized: please login again');
 
-      const res = await fetch('/api/teachers', {
+      const res = await fetch('/api/users?role=STUDENT', {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -57,45 +58,46 @@ export default function AdminTeachersPage() {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || body.message || 'Failed to load teachers');
+        throw new Error(body.error || body.message || 'Failed to load students');
       }
 
       const data = await res.json();
-      setTeachers(data.teachers || []);
+      setStudents(data.users || []);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Error loading teachers');
+      setError(err.message || 'Error loading students');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchTeachers();
+    fetchStudents();
   }, []);
 
-  // Filter teachers from primaire and secondaire schools only
-  const primaireSecondaireTeachers = useMemo(() => {
-    return teachers.filter(t => {
-      const schoolType = getSchoolType(t);
+  // Filter students from primaire and secondaire schools only
+  const primaireSecondaireStudents = useMemo(() => {
+    return students.filter(s => {
+      const schoolType = getSchoolType(s);
       return schoolType === 'primaire' || schoolType === 'secondaire';
     });
-  }, [teachers]);
+  }, [students]);
 
   // Apply filtering
-  const filteredTeachers = useMemo(() => {
-    if (!filter) return primaireSecondaireTeachers;
+  const filteredStudents = useMemo(() => {
+    if (!filter) return primaireSecondaireStudents;
     const lowerFilter = filter.toLowerCase();
-    return primaireSecondaireTeachers.filter(t => 
-      t.name.toLowerCase().includes(lowerFilter) ||
-      (t.email && t.email.toLowerCase().includes(lowerFilter)) ||
-      (t.school_name && t.school_name.toLowerCase().includes(lowerFilter))
+    return primaireSecondaireStudents.filter(s => 
+      s.name.toLowerCase().includes(lowerFilter) ||
+      (s.email && s.email.toLowerCase().includes(lowerFilter)) ||
+      (s.school_name && s.school_name.toLowerCase().includes(lowerFilter)) ||
+      (s.class_name && s.class_name.toLowerCase().includes(lowerFilter))
     );
-  }, [primaireSecondaireTeachers, filter]);
+  }, [primaireSecondaireStudents, filter]);
 
   // Apply sorting
-  const sortedTeachers = useMemo(() => {
-    const sorted = [...filteredTeachers].sort((a, b) => {
+  const sortedStudents = useMemo(() => {
+    const sorted = [...filteredStudents].sort((a, b) => {
       let aVal: string;
       let bVal: string;
       
@@ -112,6 +114,10 @@ export default function AdminTeachersPage() {
           aVal = a.school_name || '';
           bVal = b.school_name || '';
           break;
+        case 'class_name':
+          aVal = a.class_name || '';
+          bVal = b.class_name || '';
+          break;
       }
       
       if (sortOrder === 'asc') {
@@ -121,14 +127,14 @@ export default function AdminTeachersPage() {
       }
     });
     return sorted;
-  }, [filteredTeachers, sortField, sortOrder]);
+  }, [filteredStudents, sortField, sortOrder]);
 
   // Pagination
-  const totalPages = Math.ceil(sortedTeachers.length / pageSize);
-  const paginatedTeachers = useMemo(() => {
+  const totalPages = Math.ceil(sortedStudents.length / pageSize);
+  const paginatedStudents = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
-    return sortedTeachers.slice(start, start + pageSize);
-  }, [sortedTeachers, currentPage]);
+    return sortedStudents.slice(start, start + pageSize);
+  }, [sortedStudents, currentPage]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -147,9 +153,9 @@ export default function AdminTeachersPage() {
   return (
     <div style={{ padding: '24px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <div style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '4px', color: '#111827' }}>Teachers - Primaire & Secondaire</h2>
+        <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '4px', color: '#111827' }}>Students - Primaire & Secondaire</h2>
         <p style={{ fontSize: '14px', color: '#6b7280', marginTop: '4px' }}>
-          Manage and view all teachers assigned to primaire and secondaire schools.
+          Manage and view all students enrolled in primaire and secondaire schools.
         </p>
       </div>
 
@@ -159,7 +165,7 @@ export default function AdminTeachersPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <input
               type="text"
-              placeholder="Filter by name, email, or school..."
+              placeholder="Filter by name, email, school, or class..."
               value={filter}
               onChange={(e) => {
                 setFilter(e.target.value);
@@ -167,7 +173,7 @@ export default function AdminTeachersPage() {
               }}
               style={{
                 height: '40px',
-                width: '300px',
+                width: '350px',
                 borderRadius: '6px',
                 border: '1px solid #d1d5db',
                 padding: '8px 12px',
@@ -179,7 +185,7 @@ export default function AdminTeachersPage() {
             />
           </div>
           <div style={{ fontSize: '14px', color: '#6b7280' }}>
-            Total: {filteredTeachers.length} teacher(s)
+            Total: {filteredStudents.length} student(s)
           </div>
         </div>
 
@@ -201,12 +207,12 @@ export default function AdminTeachersPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #e5e7eb', backgroundColor: '#f9fafb' }}>
-                      <th 
+                    <th 
                       style={{ height: '48px', padding: '0 16px', textAlign: 'left', verticalAlign: 'middle', fontWeight: 500, color: '#6b7280', cursor: 'pointer' }}
                       onClick={() => handleSort('name')}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        Teacher Name
+                        Student Name
                         <span style={{ fontSize: '12px' }}>{getSortIcon('name')}</span>
                       </div>
                     </th>
@@ -232,27 +238,30 @@ export default function AdminTeachersPage() {
                       School Type
                     </th>
                     <th style={{ height: '48px', padding: '0 16px', textAlign: 'left', verticalAlign: 'middle', fontWeight: 500, color: '#6b7280' }}>
-                      Principal Class
+                      Class
+                    </th>
+                    <th style={{ height: '48px', padding: '0 16px', textAlign: 'left', verticalAlign: 'middle', fontWeight: 500, color: '#6b7280' }}>
+                      Parent
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedTeachers.length === 0 ? (
+                  {paginatedStudents.length === 0 ? (
                     <tr>
                       <td colSpan={5} style={{ padding: '32px', textAlign: 'center', color: '#6b7280' }}>
-                        No teachers found for primaire or secondaire schools
+                        No students found for primaire or secondaire schools
                       </td>
                     </tr>
                   ) : (
-                    paginatedTeachers.map((t, index) => {
-                      const schoolType = getSchoolType(t);
+                    paginatedStudents.map((s, index) => {
+                      const schoolType = getSchoolType(s);
                       return (
-                        <tr key={t.id} style={{ borderBottom: '1px solid #e5e7eb', backgroundColor: index % 2 === 0 ? 'white' : '#f9fafb' }}>
+                        <tr key={s.id} style={{ borderBottom: '1px solid #e5e7eb', backgroundColor: index % 2 === 0 ? 'white' : '#f9fafb' }}>
                           <td style={{ padding: '16px' }}>
-                            <div style={{ fontWeight: 500, color: '#111827' }}>{t.name}</div>
+                            <div style={{ fontWeight: 500, color: '#111827' }}>{s.name}</div>
                           </td>
-                          <td style={{ padding: '16px', color: '#6b7280', fontSize: '14px' }}>{t.email || '-'}</td>
-                          <td style={{ padding: '16px', color: '#6b7280', fontSize: '14px' }}>{t.school_name || '-'}</td>
+                          <td style={{ padding: '16px', color: '#6b7280', fontSize: '14px' }}>{s.email || '-'}</td>
+                          <td style={{ padding: '16px', color: '#6b7280', fontSize: '14px' }}>{s.school_name || '-'}</td>
                           <td style={{ padding: '16px' }}>
                             <span style={{
                               display: 'inline-flex',
@@ -272,15 +281,31 @@ export default function AdminTeachersPage() {
                             </span>
                           </td>
                           <td style={{ padding: '16px' }}>
-                            {t.principal_class_name ? (
+                            {s.class_name ? (
                               <div>
-                                <div style={{ fontWeight: 500, color: '#111827' }}>{t.principal_class_name}</div>
-                                {t.principal_class_level && (
-                                  <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>{t.principal_class_level}</div>
+                                <div style={{ fontWeight: 500, color: '#111827' }}>{s.class_name}</div>
+                                {s.class_level && (
+                                  <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>{s.class_level}</div>
                                 )}
                               </div>
                             ) : (
                               <span style={{ color: '#9ca3af', fontSize: '14px' }}>Not assigned</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '16px' }}>
+                            {s.parents && s.parents.length > 0 ? (
+                              <div>
+                                {s.parents.map((parent, idx) => (
+                                  <div key={parent.id} style={{ marginBottom: idx < s.parents!.length - 1 ? '4px' : 0 }}>
+                                    <div style={{ fontWeight: 500, color: '#111827', fontSize: '14px' }}>{parent.name}</div>
+                                    {parent.email && (
+                                      <div style={{ fontSize: '12px', color: '#6b7280' }}>{parent.email}</div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span style={{ color: '#9ca3af', fontSize: '14px' }}>No parent linked</span>
                             )}
                           </td>
                         </tr>

@@ -4,9 +4,10 @@ const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL |
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const school_id = searchParams.get('school_id') || '';
-
-  const url = `${BACKEND_URL}/api/users/?school_id=${encodeURIComponent(school_id)}`;
+  
+  // Forward all query parameters to the backend
+  const queryString = searchParams.toString();
+  const url = `${BACKEND_URL}/api/users/${queryString ? '?' + queryString : ''}`;
 
   try {
     const authHeader = request.headers.get('authorization') || '';

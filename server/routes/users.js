@@ -10,7 +10,7 @@ router.get('/', async (req, res) => {
   try {
     const { role, school_id, search } = req.query;
 
-    let query = supabaseAdmin.from('users').select('*');
+    let query = supabaseAdmin.from('users').select('id, name, email, role, profile_image, school_id, class_id, created_at');
 
     // Filter by role if provided
     if (role) {
@@ -29,6 +29,95 @@ router.get('/', async (req, res) => {
 
     const { data, error } = await query.order('name');
     if (error) throw error;
+
+    // Get school info for each user
+    if (data && data.length > 0) {
+      const schoolIds = [...new Set(data.map(u => u.school_id).filter(Boolean))];
+      
+      if (schoolIds.length > 0) {
+        const { data: schools } = await supabaseAdmin
+          .from('schools')
+          .select('id, name, school_type')
+          .in('id', schoolIds);
+        
+        const schoolMap = (schools || []).reduce((acc, school) => {
+          acc[school.id] = school;
+          return acc;
+        }, {});
+        
+        // Attach school info to users
+        data.forEach(user => {
+          if (user.school_id && schoolMap[user.school_id]) {
+            user.school_name = schoolMap[user.school_id].name;
+            user.school_type = schoolMap[user.school_id].school_type;
+          }
+        });
+      }
+      
+      // Get class info for users
+      const classIds = [...new Set(data.map(u => u.class_id).filter(Boolean))];
+      
+      if (classIds.length > 0) {
+        const { data: classes } = await supabaseAdmin
+          .from('classes')
+          .select('id, name, level')
+          .in('id', classIds);
+        
+        const classMap = (classes || []).reduce((acc, cls) => {
+          acc[cls.id] = cls;
+          return acc;
+        }, {});
+        
+        // Attach class info to users
+        data.forEach(user => {
+          if (user.class_id && classMap[user.class_id]) {
+            user.class_name = classMap[user.class_id].name;
+            user.class_level = classMap[user.class_id].level;
+          }
+        });
+      }
+
+      // Get parent info for students
+      const studentIds = data.filter(u => u.role === 'STUDENT').map(u => u.id);
+      
+      if (studentIds.length > 0) {
+        const { data: parentLinks } = await supabaseAdmin
+          .from('parent_student')
+          .select('student_id, parent_id')
+          .in('student_id', studentIds);
+        
+        if (parentLinks && parentLinks.length > 0) {
+          const parentIds = [...new Set(parentLinks.map(link => link.parent_id))];
+          const { data: parents } = await supabaseAdmin
+            .from('users')
+            .select('id, name, email')
+            .in('id', parentIds);
+          
+          const parentMap = (parents || []).reduce((acc, parent) => {
+            acc[parent.id] = parent;
+            return acc;
+          }, {});
+          
+          // Group parents by student
+          const studentParents = {};
+          parentLinks.forEach(link => {
+            if (!studentParents[link.student_id]) {
+              studentParents[link.student_id] = [];
+            }
+            if (parentMap[link.parent_id]) {
+              studentParents[link.student_id].push(parentMap[link.parent_id]);
+            }
+          });
+          
+          // Attach parent info to students
+          data.forEach(user => {
+            if (user.role === 'STUDENT' && studentParents[user.id]) {
+              user.parents = studentParents[user.id];
+            }
+          });
+        }
+      }
+    }
 
     // Remove passwords
     const safeUsers = data.map(u => ({ ...u, password: undefined }));

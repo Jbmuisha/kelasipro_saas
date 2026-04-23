@@ -68,7 +68,7 @@ export default function LoginPage() {
         // Store new session data
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", JSON.stringify(data.user));
-        
+
         // Set cookie for middleware authentication
         document.cookie = `token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
 
@@ -83,12 +83,39 @@ export default function LoginPage() {
           (data.user.admin_level || data.user.school_type || "primaire").toLowerCase();
         localStorage.setItem("school_type", resolvedSchoolType);
 
-// Set reliable cookie + role cookie for middleware
+        // Set reliable cookie + role cookie for middleware
         document.cookie = `token=${data.token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
         document.cookie = `role=${data.user.role}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
-        
+
+        // Check subscription status for school users (not super admin)
+        if (data.user.role !== 'SUPER_ADMIN' && data.user.school_id) {
+          try {
+            const subResponse = await fetch(`${API_URL}/api/subscriptions/school/${data.user.school_id}`, {
+              headers: { 'Authorization': `Bearer ${data.token}` }
+            });
+
+            if (subResponse.ok) {
+              const subData = await subResponse.json();
+              const subscriptions = subData.subscriptions || [];
+              const activeSub = subscriptions.find((sub: any) => sub.status === 'active' && new Date(sub.end_date) > new Date());
+
+              // Set subscription status cookie
+              document.cookie = `subscription_active=${activeSub ? 'true' : 'false'}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+            } else {
+              // If can't check subscription, assume inactive
+              document.cookie = `subscription_active=false; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+            }
+          } catch (subErr) {
+            console.error('[LOGIN] Subscription check failed:', subErr);
+            document.cookie = `subscription_active=false; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+          }
+        } else {
+          // Super admin always has access
+          document.cookie = `subscription_active=true; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+        }
+
         console.log('[LOGIN] Cookie set:', document.cookie);
         console.log(`[LOGIN SUCCESS] User: ${identifier}, Role: ${data.user.role}, Cookie visible: ${document.cookie.includes('token=')}`);
 
