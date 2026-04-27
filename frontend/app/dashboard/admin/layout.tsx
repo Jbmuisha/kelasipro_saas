@@ -15,6 +15,7 @@ import {
   FaBell,
   FaBars,
   FaTimes,
+  FaFileContract,
 } from "react-icons/fa";
 import { useState, useEffect } from "react";
 import "./superadmin.css";
@@ -29,6 +30,7 @@ const translations = {
     teachers: "Enseignants",
     students: "Étudiants",
     subscriptions: "Abonnements",
+    contracts: "Contrats",
     reports: "Rapports",
     settings: "Paramètres",
     logout: "Déconnexion",
@@ -63,6 +65,7 @@ const translations = {
     teachers: "Teachers",
     students: "Students",
     subscriptions: "Subscriptions",
+    contracts: "Contracts",
     reports: "Reports",
     settings: "Settings",
     logout: "Logout",
@@ -137,6 +140,7 @@ export default function SuperAdminLayout({
     { name: t.teachers, href: "/dashboard/admin/teachers", icon: <FaUsers /> },
     { name: t.students, href: "/dashboard/admin/students", icon: <FaUserGraduate /> },
     { name: t.subscriptions, href: "/dashboard/admin/subscriptions", icon: <FaMoneyBillWave /> },
+    { name: t.contracts, href: "/dashboard/admin/contracts", icon: <FaFileContract /> },
     { name: t.reports, href: "/dashboard/admin/reports", icon: <FaChartLine /> },
     { name: t.settings, href: "/dashboard/admin/settings", icon: <FaCog /> },
   ];

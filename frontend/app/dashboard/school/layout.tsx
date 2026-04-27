@@ -13,6 +13,7 @@ import {
   FaBell,
   FaBars,
   FaTimes,
+  FaFileContract,
 } from "react-icons/fa";
 import { useState, useEffect } from "react";
 import "./school.css";
@@ -34,6 +35,7 @@ const translations = {
     schedule: "Horaire",
     payments: "Paiements",
     messages: "Messages",
+    contracts: "Contrats",
   },
   en: {
     dashboard: "Dashboard",
@@ -51,6 +53,7 @@ const translations = {
     schedule: "Schedule",
     payments: "Payments",
     messages: "Messages",
+    contracts: "Contracts",
   },
 };
 
@@ -116,6 +119,7 @@ export default function SchoolLayout({ children }: { children: React.ReactNode }
   const baseMenu = [
     { name: t.dashboard, href: "/dashboard/school", icon: <FaTachometerAlt /> },
     { name: t.users || "All Users", href: "/dashboard/school/users", icon: <FaTachometerAlt /> },
+    { name: t.contracts, href: "/dashboard/school/contract", icon: <FaFileContract /> },
     { name: t.settings, href: "/dashboard/school/settings", icon: <FaCog /> },
   ];
 

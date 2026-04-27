@@ -505,6 +505,8 @@
   box-shadow: 0 20px 40px rgba(0,0,0,0.3);
   width: 500px;
   max-width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
   animation: modalSlideIn 0.3s ease;
 }
 
@@ -559,6 +561,15 @@
 
 .modal-close:active {
   transform: scale(0.95);
+}
+
+/* Contract Preview Modal Actions */
+.modal-content .form-actions {
+  display: flex;
+  gap: 1rem;
+}
+.modal-content .form-actions > * {
+  flex: 1;
 }
 
 /* Toast Notifications */
@@ -653,7 +664,8 @@
   }
   
   .btn-save,
-  .btn-cancel {
+  .btn-cancel,
+  .btn-download {
     width: 100%;
   }
   
@@ -662,4 +674,385 @@
     left: 15px;
     top: 15px;
   }
+}
+
+/* Contracts Card Grid Layout */
+.contracts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.contract-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  transition: all 0.25s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.contract-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+  border-color: #7b2ff7;
+}
+
+.contract-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #7b2ff7 0%, #5a1fd0 100%);
+  color: white;
+}
+
+.contract-number {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.contract-card-header .status-badge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(4px);
+}
+
+.contract-card-body {
+  padding: 1.25rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.contract-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.contract-info-row .label {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.contract-info-row .value {
+  color: #1e293b;
+  font-weight: 600;
+  text-align: right;
+}
+
+.contract-info-row .value.amount {
+  color: #059669;
+  font-size: 1.1rem;
+}
+
+.contract-card-actions {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-top: 1px solid #f1f5f9;
+  background: #f8fafc;
+}
+
+.contract-card-actions button {
+  flex: 1;
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-view {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.btn-view:hover {
+  background: #c7d2fe;
+  transform: translateY(-1px);
+}
+
+.btn-sign {
+   background: #dcfce7;
+   color: #16a34a;
+ }
+
+ .btn-sign:hover {
+   background: #bbf7d0;
+   transform: translateY(-1px);
+ }
+
+.btn-sign.btn-sm {
+   padding: 0.5rem 1rem;
+   font-size: 0.85rem;
+}
+
+.btn-download.btn-sm {
+   padding: 0.5rem 1rem;
+   font-size: 0.85rem;
+}
+
+.btn-cancel.btn-sm {
+   padding: 0.5rem 1rem;
+   font-size: 0.85rem;
+}
+
+/* Modal Form Styles */
+.school-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-group label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.form-group input,
+.form-group select {
+  padding: 0.75rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+  background: white;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #7b2ff7;
+  box-shadow: 0 0 0 3px rgba(123, 47, 247, 0.1);
+}
+
+.form-group input::placeholder {
+  color: #9ca3af;
+}
+
+/* Modal Actions */
+.form-actions {
+   display: flex;
+   gap: 1rem;
+   justify-content: flex-end;
+   margin-top: 1.5rem;
+   padding-top: 1.5rem;
+   border-top: 1px solid #e5e7eb;
+ }
+
+ .btn-save {
+   padding: 0.75rem 1.5rem;
+   background: linear-gradient(135deg, #7b2ff7 0%, #5a1fd0 100%);
+   color: white;
+   border: none;
+   border-radius: 8px;
+   font-size: 0.95rem;
+   font-weight: 600;
+   cursor: pointer;
+   transition: all 0.2s ease;
+ }
+
+ .btn-save:hover {
+   transform: translateY(-2px);
+   box-shadow: 0 4px 12px rgba(123, 47, 247, 0.3);
+ }
+
+ .btn-cancel {
+   padding: 0.75rem 1.5rem;
+   background: #f3f4f6;
+   color: #6b7280;
+   border: 1px solid #d1d5db;
+   border-radius: 8px;
+   font-size: 0.95rem;
+   font-weight: 600;
+   cursor: pointer;
+   transition: all 0.2s ease;
+ }
+
+ .btn-cancel:hover {
+   background: #e5e7eb;
+   color: #374151;
+ }
+
+/* Contract Preview Modal Content */
+.modal-content .dashboard-content {
+   padding: 0 1.5rem 1.5rem;
+}
+.modal-content .table-container {
+   width: 100%;
+   overflow-x: auto;
+   margin-bottom: 1.5rem;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .contracts-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .contract-card-actions {
+    flex-direction: column;
+  }
+  
+  .header-actions {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .btn-add {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .contract-info-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  
+  .contract-info-row .value {
+    text-align: left;
+    font-size: 1rem;
+  }
+}
+
+/* Status Badge Styles */
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.status-badge.status-success {
+  background: #dcfce7;
+  color: #16a34a;
+  border: 1px solid #86efac;
+}
+
+.status-badge.status-warning {
+  background: #fef3c7;
+  color: #d97706;
+  border: 1px solid #fcd34d;
+}
+
+.status-badge.status-error {
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+}
+
+.status-badge.status-draft {
+  background: #e0e7ff;
+  color: #4338ca;
+  border: 1px solid #a5b4fc;
+}
+
+/* Form textarea styling */
+.form-group textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+  background: white;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.form-group textarea:focus {
+  outline: none;
+  border-color: #7b2ff7;
+  box-shadow: 0 0 0 3px rgba(123, 47, 247, 0.1);
+}
+
+/* Download button */
+.btn-download {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  text-decoration: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.btn-download:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+/* Contract Detail Modal Styles */
+.contract-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  font-weight: 600;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.detail-value {
+  color: #1e293b;
+  font-weight: 500;
+  text-align: right;
+}
+
+.detail-value.amount {
+  color: #059669;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.detail-value .status-badge {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.6rem;
 }

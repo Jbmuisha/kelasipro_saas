@@ -10,8 +10,7 @@ router.get('/', async (req, res) => {
       .from('subscriptions')
       .select(`
         *,
-        school:schools(id, name, email, school_type),
-        plan:subscription_plans(id, name, price, duration_months)
+        school:schools(id, name, email, school_type)
       `)
       .order('created_at', { ascending: false });
 
@@ -32,8 +31,7 @@ router.get('/:id', async (req, res) => {
       .from('subscriptions')
       .select(`
         *,
-        school:schools(id, name, email, school_type),
-        plan:subscription_plans(id, name, price, duration_months)
+        school:schools(id, name, email, school_type)
       `)
       .eq('id', id)
       .single();
@@ -55,10 +53,7 @@ router.get('/school/:schoolId', async (req, res) => {
 
     const { data, error } = await supabaseAdmin
       .from('subscriptions')
-      .select(`
-        *,
-        plan:subscription_plans(id, name, price, duration_months)
-      `)
+      .select('*')
       .eq('school_id', schoolId)
       .order('created_at', { ascending: false });
 
@@ -114,8 +109,7 @@ router.post('/', async (req, res) => {
       })
       .select(`
         *,
-        school:schools(id, name, email),
-        plan:subscription_plans(id, name, price)
+        school:schools(id, name, email)
       `)
       .single();
 
@@ -168,8 +162,7 @@ router.put('/:id', requireAuth, requireSuperAdmin, async (req, res) => {
       .eq('id', id)
       .select(`
         *,
-        school:schools(id, name, email),
-        plan:subscription_plans(id, name, price)
+        school:schools(id, name, email)
       `)
       .single();
 
@@ -209,8 +202,7 @@ router.post('/:id/activate', requireAuth, requireSuperAdmin, async (req, res) =>
       .eq('id', id)
       .select(`
         *,
-        school:schools(id, name, email),
-        plan:subscription_plans(id, name, price)
+        school:schools(id, name, email)
       `)
       .single();
 
@@ -248,8 +240,7 @@ router.post('/:id/cancel', requireAuth, requireSuperAdmin, async (req, res) => {
       .eq('id', id)
       .select(`
         *,
-        school:schools(id, name, email),
-        plan:subscription_plans(id, name, price)
+        school:schools(id, name, email)
       `)
       .single();
 
@@ -334,6 +325,29 @@ router.post('/check-expiry', requireAuth, requireSuperAdmin, async (req, res) =>
 });
 
 // ================= CONTRACTS ROUTES =================
+
+// Get contracts by school
+router.get('/contracts/school/:schoolId', async (req, res) => {
+  try {
+    const { schoolId } = req.params;
+
+    const { data, error } = await supabaseAdmin
+      .from('contracts')
+      .select(`
+        *,
+        school:schools(id, name, email, address, school_type),
+        subscription:subscriptions(id, plan_type, amount, start_date, end_date)
+      `)
+      .eq('school_id', schoolId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json({ contracts: data });
+  } catch (err) {
+    console.error('[GET SCHOOL CONTRACTS ERROR]', err.message);
+    res.status(500).json({ error: 'Failed to get school contracts' });
+  }
+});
 
 // Get all contracts
 router.get('/contracts/all', async (req, res) => {

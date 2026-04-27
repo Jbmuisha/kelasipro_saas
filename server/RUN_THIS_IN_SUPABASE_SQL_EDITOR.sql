@@ -1,5 +1,8 @@
--- Kelasipro Supabase Database Schema
--- Run this SQL in Supabase SQL Editor to create all tables
+-- =============================================================================
+-- KELASIPRO COMPLETE SCHEMA MIGRATION
+-- Run this in Supabase SQL Editor:
+-- https://supabase.com/dashboard → Your Project → SQL Editor → New Query
+-- =============================================================================
 
 -- ================= USERS TABLE =================
 CREATE TABLE IF NOT EXISTS users (
@@ -33,6 +36,9 @@ CREATE TABLE IF NOT EXISTS schools (
 
 -- Ensure full_access column exists (for existing installations)
 ALTER TABLE schools ADD COLUMN IF NOT EXISTS full_access BOOLEAN DEFAULT TRUE;
+
+-- Backfill full_access for existing schools
+UPDATE schools SET full_access = TRUE WHERE full_access IS NULL;
 
 -- ================= CLASSES TABLE =================
 CREATE TABLE IF NOT EXISTS classes (
@@ -139,6 +145,19 @@ CREATE TABLE IF NOT EXISTS user_online_status (
   is_online BOOLEAN DEFAULT FALSE
 );
 
+-- ================= SUBSCRIPTION_PLANS TABLE =================
+CREATE TABLE IF NOT EXISTS subscription_plans (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  price DECIMAL(10,2) NOT NULL,
+  duration_months INTEGER NOT NULL DEFAULT 1,
+  features TEXT,
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ================= SUBSCRIPTIONS TABLE =================
 CREATE TABLE IF NOT EXISTS subscriptions (
   id SERIAL PRIMARY KEY,
@@ -152,19 +171,6 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   payment_method VARCHAR(50),
   transaction_id VARCHAR(255),
   notes TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- ================= SUBSCRIPTION_PLANS TABLE =================
-CREATE TABLE IF NOT EXISTS subscription_plans (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  description TEXT,
-  price DECIMAL(10,2) NOT NULL,
-  duration_months INTEGER NOT NULL DEFAULT 1,
-  features TEXT,
-  is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -206,7 +212,7 @@ CREATE INDEX IF NOT EXISTS idx_contracts_school_id ON contracts(school_id);
 
 -- ================= INSERT SUPER ADMIN =================
 -- Password: jbGolden2912#
-INSERT INTO users (name, email, password, role, unique_id) 
+INSERT INTO users (name, email, password, role, unique_id)
 VALUES ('jboyGolden', 'jbmuisha@gmail.com', '$2a$10$rQEY6bQKK3Z0vZ5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5Y5', 'SUPER_ADMIN', 'super_admin_1')
 ON CONFLICT (email) DO NOTHING;
 
@@ -219,3 +225,21 @@ INSERT INTO subscription_plans (name, description, price, duration_months, featu
 ('Standard Yearly', 'Standard plan for medium schools - yearly billing (2 months free)', 1000.00, 12, '{"max_students": 500, "max_teachers": 30, "support": "email+phone", "reports": true}'),
 ('Premium Yearly', 'Premium plan for large schools - yearly billing (2 months free)', 2000.00, 12, '{"max_students": "unlimited", "max_teachers": "unlimited", "support": "priority", "reports": true, "api_access": true}')
 ON CONFLICT DO NOTHING;
+
+-- ================= VERIFY =================
+SELECT 'users' as table_name, COUNT(*) as rows FROM users
+UNION ALL SELECT 'schools', COUNT(*) FROM schools
+UNION ALL SELECT 'classes', COUNT(*) FROM classes
+UNION ALL SELECT 'courses', COUNT(*) FROM courses
+UNION ALL SELECT 'grades', COUNT(*) FROM grades
+UNION ALL SELECT 'messages', COUNT(*) FROM messages
+UNION ALL SELECT 'schedules', COUNT(*) FROM schedules
+UNION ALL SELECT 'teacher_classes', COUNT(*) FROM teacher_classes
+UNION ALL SELECT 'course_classes', COUNT(*) FROM course_classes
+UNION ALL SELECT 'parent_student', COUNT(*) FROM parent_student
+UNION ALL SELECT 'school_users', COUNT(*) FROM school_users
+UNION ALL SELECT 'user_online_status', COUNT(*) FROM user_online_status
+UNION ALL SELECT 'subscription_plans', COUNT(*) FROM subscription_plans
+UNION ALL SELECT 'subscriptions', COUNT(*) FROM subscriptions
+UNION ALL SELECT 'contracts', COUNT(*) FROM contracts;
+

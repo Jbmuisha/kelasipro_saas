@@ -89,7 +89,7 @@ export default function LoginPage() {
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
 
-        // Check subscription status for school users (not super admin)
+        // Check subscription status and full_access for school users (not super admin)
         if (data.user.role !== 'SUPER_ADMIN' && data.user.school_id) {
           try {
             const subResponse = await fetch(`${API_URL}/api/subscriptions/school/${data.user.school_id}`, {
@@ -101,14 +101,23 @@ export default function LoginPage() {
               const subscriptions = subData.subscriptions || [];
               const activeSub = subscriptions.find((sub: any) => sub.status === 'active' && new Date(sub.end_date) > new Date());
 
-              // Set subscription status cookie
-              document.cookie = `subscription_active=${activeSub ? 'true' : 'false'}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+              // Check if school has full_access
+              const schoolRes = await fetch(`${API_URL}/api/schools/${data.user.school_id}`);
+              let schoolHasFullAccess = true;
+              if (schoolRes.ok) {
+                const schoolData = await schoolRes.json();
+                schoolHasFullAccess = schoolData.school?.full_access !== false;
+              }
+
+              // User can access if they have active subscription AND school has full_access
+              const canAccess = activeSub && schoolHasFullAccess;
+              document.cookie = `subscription_active=${canAccess ? 'true' : 'false'}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
             } else {
               // If can't check subscription, assume inactive
               document.cookie = `subscription_active=false; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
             }
           } catch (subErr) {
-            console.error('[LOGIN] Subscription check failed:', subErr);
+            console.error('[LOGIN] Subscription/school check failed:', subErr);
             document.cookie = `subscription_active=false; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
           }
         } else {

@@ -268,4 +268,88 @@ router.delete('/:schoolId', async (req, res) => {
   }
 });
 
+// ================= UPDATE SCHOOL FULL ACCESS =================
+router.put('/:schoolId/full-access', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const { schoolId } = req.params;
+    const { full_access } = req.body;
+
+    if (typeof full_access !== 'boolean') {
+      return res.status(400).json({ error: 'full_access must be a boolean value' });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('schools')
+      .update({
+        full_access,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', schoolId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'School not found' });
+
+    // If full_access is true, ensure there is an active subscription for the school
+    if (full_access) {
+      const { data: existingSubs, error: subError } = await supabaseAdmin
+        .from('subscriptions')
+        .select('id')
+        .eq('school_id', schoolId)
+        .eq('status', 'active')
+        .limit(1);
+
+      if (subError) throw subError;
+
+      if (!existingSubs || existingSubs.length === 0) {
+        // Create a default subscription (basic plan, free, active)
+        const { data: newSub, error: createError } = await supabaseAdmin
+          .from('subscriptions')
+          .insert({
+            school_id: schoolId,
+            plan_type: 'basic',
+            start_date: new Date().toISOString(),
+            end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year from now
+            status: 'active',
+            payment_status: 'paid',
+            amount: 0,
+            payment_method: 'free',
+            notes: 'Automatically created when full access granted'
+          })
+          .select()
+          .single();
+
+        if (createError) throw createError;
+        // Optionally attach the new subscription to the response
+        data.subscription = newSub;
+      }
+    } else {
+      // If full_access is false, cancel any active subscription
+      const { error: cancelError } = await supabaseAdmin
+        .from('subscriptions')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('school_id', schoolId)
+        .eq('status', 'active');
+      if (cancelError) throw cancelError;
+    }
+
+    res.json({
+      message: `School ${full_access ? 'full access granted' : 'disconnected'} successfully`,
+      school: data
+    });
+  } catch (err) {
+    console.error('[UPDATE SCHOOL FULL ACCESS ERROR]', err.message);
+    // Provide more helpful error message if column is missing
+    if (err.message && err.message.includes('full_access') &&
+        (err.message.includes('column') || err.message.includes('schema cache'))) {
+      res.status(500).json({
+        error: 'Database column full_access is missing. Please run the migration script or SQL file to add the column.'
+      });
+    } else {
+      res.status(500).json({ error: err.message });
+    }
+  }
+});
+
 module.exports = router;

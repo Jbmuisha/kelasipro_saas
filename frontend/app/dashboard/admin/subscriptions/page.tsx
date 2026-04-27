@@ -36,6 +36,7 @@ type School = {
   name: string;
   email?: string;
   school_type?: string;
+  full_access?: boolean;
 };
 
 // Simple toast notification component
@@ -64,6 +65,7 @@ export default function AdminSubscriptionsPage() {
   const [editingSubscription, setEditingSubscription] = useState<Subscription | null>(null);
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
   const [filterStatus, setFilterStatus] = useState("all");
+  const [activeTab, setActiveTab] = useState("subscriptions");
 
   // ================= SHOW TOAST =================
   const showToast = (message: string, type: string = "success") => {
@@ -295,6 +297,36 @@ export default function AdminSubscriptionsPage() {
     }
   };
 
+  // ================= UPDATE SCHOOL FULL ACCESS =================
+  const handleUpdateSchoolFullAccess = async (schoolId: string, fullAccess: boolean) => {
+    if (!confirm(`Are you sure you want to ${fullAccess ? 'grant' : 'revoke'} full access for this school? ${!fullAccess ? 'Students and teachers from this school will not be able to log in.' : ''}`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token') || '';
+      const response = await fetch(`${API_URL}/api/schools/${schoolId}/full-access`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ full_access: fullAccess })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || `Failed to update school full access`);
+      }
+
+      fetchSchools();
+      showToast(`School ${fullAccess ? 'full access granted' : 'disconnected'} successfully!`, "success");
+    } catch (err: any) {
+      console.error("Update school full access error:", err);
+      showToast(err.message || "Failed to update school full access", "error");
+    }
+  };
+
   // ================= OPEN CREATE MODAL =================
   const openCreateModal = () => {
     resetForm();
@@ -362,125 +394,201 @@ export default function AdminSubscriptionsPage() {
   return (
     <div className="dashboard-container">
       <div className="dashboard-header">
-        <h1>Subscriptions Management</h1>
-        <div className="header-actions">
-          <button className="btn-add" onClick={openCreateModal}>
-            + Add Subscription
-          </button>
-        </div>
+        <h1>Subscriptions & Schools Management</h1>
       </div>
 
-      {/* FILTERS */}
-      <div className="filters" style={{ marginBottom: 20, display: 'flex', gap: 10 }}>
+      {/* TABS */}
+      <div className="tabs">
         <button
-          className={`btn-filter ${filterStatus === 'all' ? 'active' : ''}`}
-          onClick={() => setFilterStatus('all')}
+          className={`tab-btn ${activeTab === 'subscriptions' ? 'active' : ''}`}
+          onClick={() => setActiveTab('subscriptions')}
         >
-          All
+          Subscriptions ({subscriptions.length})
         </button>
         <button
-          className={`btn-filter ${filterStatus === 'active' ? 'active' : ''}`}
-          onClick={() => setFilterStatus('active')}
+          className={`tab-btn ${activeTab === 'schools' ? 'active' : ''}`}
+          onClick={() => setActiveTab('schools')}
         >
-          Active
-        </button>
-        <button
-          className={`btn-filter ${filterStatus === 'expired' ? 'active' : ''}`}
-          onClick={() => setFilterStatus('expired')}
-        >
-          Expired
-        </button>
-        <button
-          className={`btn-filter ${filterStatus === 'cancelled' ? 'active' : ''}`}
-          onClick={() => setFilterStatus('cancelled')}
-        >
-          Cancelled
+          Schools ({schools.length})
         </button>
       </div>
 
-      {/* ERROR */}
-      {error && <p className="no-data">{error}</p>}
+      {/* SUBSCRIPTIONS TAB */}
+      {activeTab === 'subscriptions' && (
+        <>
+          {/* FILTERS */}
+          <div className="filters">
+            <button
+              className={`btn-filter ${filterStatus === 'all' ? 'active' : ''}`}
+              onClick={() => setFilterStatus('all')}
+            >
+              All
+            </button>
+            <button
+              className={`btn-filter ${filterStatus === 'active' ? 'active' : ''}`}
+              onClick={() => setFilterStatus('active')}
+            >
+              Active
+            </button>
+            <button
+              className={`btn-filter ${filterStatus === 'expired' ? 'active' : ''}`}
+              onClick={() => setFilterStatus('expired')}
+            >
+              Expired
+            </button>
+            <button
+              className={`btn-filter ${filterStatus === 'cancelled' ? 'active' : ''}`}
+              onClick={() => setFilterStatus('cancelled')}
+            >
+              Cancelled
+            </button>
+          </div>
 
-      {/* LOADING */}
-      {loading && <p className="loading">Loading subscriptions...</p>}
+          {/* ERROR */}
+          {error && <p className="no-data">{error}</p>}
 
-      {/* SUBSCRIPTIONS TABLE */}
-      {!loading && filteredSubscriptions.length > 0 && (
+          {/* LOADING */}
+          {loading && <p className="loading">Loading subscriptions...</p>}
+
+          {/* SUBSCRIPTIONS TABLE */}
+          {!loading && filteredSubscriptions.length > 0 && (
+            <div className="dashboard-content">
+              <div className="table-container">
+                <table className="dashboard-table">
+                  <thead>
+                    <tr>
+                      <th>School</th>
+                      <th>Plan Type</th>
+                      <th>Start Date</th>
+                      <th>End Date</th>
+                      <th>Amount</th>
+                      <th>Status</th>
+                      <th>Payment</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSubscriptions.map((subscription) => (
+                      <tr key={subscription.id} className={isExpired(subscription.end_date) && subscription.status === 'active' ? 'expired-row' : ''}>
+                        <td>
+                          <strong>{subscription.school?.name || 'Unknown School'}</strong>
+                          <br />
+                          <small>{subscription.school?.school_type}</small>
+                        </td>
+                        <td>{subscription.plan_type}</td>
+                        <td>{formatDate(subscription.start_date)}</td>
+                        <td>
+                          {formatDate(subscription.end_date)}
+                          {isExpired(subscription.end_date) && subscription.status === 'active' && (
+                            <span className="status-badge status-danger" style={{ marginLeft: 5 }}>Expired!</span>
+                          )}
+                        </td>
+                        <td>${subscription.amount?.toFixed(2)}</td>
+                        <td>
+                          <span className={`status-badge ${getStatusBadge(subscription.status)}`}>
+                            {subscription.status}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`status-badge ${getPaymentStatusBadge(subscription.payment_status)}`}>
+                            {subscription.payment_status}
+                          </span>
+                        </td>
+                        <td>
+                          <div className="actions">
+                            <button
+                              className="btn-edit"
+                              onClick={() => openEditModal(subscription)}
+                            >
+                              Edit
+                            </button>
+                            {subscription.status === 'active' && subscription.payment_status !== 'paid' && (
+                              <button
+                                className="btn-save"
+                                onClick={() => handleActivateSubscription(subscription.id)}
+                                style={{ marginLeft: 5 }}
+                              >
+                                Activate
+                              </button>
+                            )}
+                            {subscription.status === 'active' && (
+                              <button
+                                className="btn-delete"
+                                onClick={() => handleCancelSubscription(subscription.id)}
+                                style={{ marginLeft: 5 }}
+                              >
+                                Cancel
+                              </button>
+                            )}
+                            <button
+                              className="btn-delete"
+                              onClick={() => handleDeleteSubscription(subscription.id)}
+                              style={{ marginLeft: 5 }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {!loading && filteredSubscriptions.length === 0 && (
+            <p className="no-data">No subscriptions found.</p>
+          )}
+        </>
+      )}
+
+      {/* SCHOOLS TAB */}
+      {activeTab === 'schools' && (
         <div className="dashboard-content">
           <div className="table-container">
             <table className="dashboard-table">
               <thead>
                 <tr>
-                  <th>School</th>
-                  <th>Plan Type</th>
-                  <th>Start Date</th>
-                  <th>End Date</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                  <th>Payment</th>
+                  <th>School Name</th>
+                  <th>Type</th>
+                  <th>Email</th>
+                  <th>Full Access</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredSubscriptions.map((subscription) => (
-                  <tr key={subscription.id} className={isExpired(subscription.end_date) && subscription.status === 'active' ? 'expired-row' : ''}>
+                {schools.map((school) => (
+                  <tr key={school.id} className={!school.full_access ? 'expired-row' : ''}>
                     <td>
-                      <strong>{subscription.school?.name || 'Unknown School'}</strong>
-                      <br />
-                      <small>{subscription.school?.school_type}</small>
+                      <strong>{school.name}</strong>
                     </td>
-                    <td>{subscription.plan_type}</td>
-                    <td>{formatDate(subscription.start_date)}</td>
+                    <td>{school.school_type}</td>
+                    <td>{school.email || '-'}</td>
                     <td>
-                      {formatDate(subscription.end_date)}
-                      {isExpired(subscription.end_date) && subscription.status === 'active' && (
-                        <span className="status-badge status-danger" style={{ marginLeft: 5 }}>Expired!</span>
-                      )}
-                    </td>
-                    <td>${subscription.amount?.toFixed(2)}</td>
-                    <td>
-                      <span className={`status-badge ${getStatusBadge(subscription.status)}`}>
-                        {subscription.status}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`status-badge ${getPaymentStatusBadge(subscription.payment_status)}`}>
-                        {subscription.payment_status}
+                      <span className={`status-badge ${school.full_access ? 'status-success' : 'status-danger'}`}>
+                        {school.full_access ? 'Enabled' : 'Disabled'}
                       </span>
                     </td>
                     <td>
                       <div className="actions">
-                        <button
-                          className="btn-edit"
-                          onClick={() => openEditModal(subscription)}
-                        >
-                          Edit
-                        </button>
-                        {subscription.status === 'active' && subscription.payment_status !== 'paid' && (
-                          <button
-                            className="btn-save"
-                            onClick={() => handleActivateSubscription(subscription.id)}
-                            style={{ marginLeft: 5 }}
-                          >
-                            Activate
-                          </button>
-                        )}
-                        {subscription.status === 'active' && (
+                        {school.full_access ? (
                           <button
                             className="btn-delete"
-                            onClick={() => handleCancelSubscription(subscription.id)}
-                            style={{ marginLeft: 5 }}
+                            onClick={() => handleUpdateSchoolFullAccess(school.id, false)}
+                            title="Disconnect school - users will not be able to login"
                           >
-                            Cancel
+                            Disconnect
+                          </button>
+                        ) : (
+                          <button
+                            className="btn-save"
+                            onClick={() => handleUpdateSchoolFullAccess(school.id, true)}
+                            title="Grant full access - users will be able to login"
+                          >
+                            Grant Access
                           </button>
                         )}
-                        <button
-                          className="btn-delete"
-                          onClick={() => handleDeleteSubscription(subscription.id)}
-                          style={{ marginLeft: 5 }}
-                        >
-                          Delete
-                        </button>
                       </div>
                     </td>
                   </tr>
@@ -488,11 +596,10 @@ export default function AdminSubscriptionsPage() {
               </tbody>
             </table>
           </div>
+          {schools.length === 0 && (
+            <p className="no-data">No schools found.</p>
+          )}
         </div>
-      )}
-
-      {!loading && filteredSubscriptions.length === 0 && (
-        <p className="no-data">No subscriptions found.</p>
       )}
 
       {/* TOAST NOTIFICATION */}
@@ -507,7 +614,7 @@ export default function AdminSubscriptionsPage() {
       {/* SUBSCRIPTION MODAL */}
       {showModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: 500, width: '90%', margin: '20px' }}>
+          <div className="modal-content">
             <div className="modal-header">
               <h2>{editingSubscription ? "Edit Subscription" : "Add Subscription"}</h2>
               <button className="modal-close" onClick={() => setShowModal(false)}>
@@ -515,16 +622,15 @@ export default function AdminSubscriptionsPage() {
               </button>
             </div>
 
-            <div className="school-form" style={{ padding: '20px', maxHeight: '70vh', overflowY: 'auto' }}>
+            <div className="school-form">
               {/* School */}
-              <div className="form-group" style={{ marginBottom: 15 }}>
-                <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>School *</label>
+              <div className="form-group">
+                <label>School *</label>
                 <select
                   value={formData.school_id}
                   onChange={(e) => setFormData({ ...formData, school_id: e.target.value })}
                   disabled={!!editingSubscription}
                   required
-                  style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #ddd' }}
                 >
                   <option value="">Select a school</option>
                   {schools.map(school => (
@@ -536,13 +642,12 @@ export default function AdminSubscriptionsPage() {
               </div>
 
               {/* Plan Type */}
-              <div className="form-group" style={{ marginBottom: 15 }}>
-                <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>Plan Type *</label>
+              <div className="form-group">
+                <label>Plan Type *</label>
                 <select
                   value={formData.plan_type}
                   onChange={(e) => setFormData({ ...formData, plan_type: e.target.value })}
                   required
-                  style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #ddd' }}
                 >
                   <option value="basic">Basic</option>
                   <option value="standard">Standard</option>
@@ -551,20 +656,19 @@ export default function AdminSubscriptionsPage() {
               </div>
 
               {/* End Date */}
-              <div className="form-group" style={{ marginBottom: 15 }}>
-                <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>End Date *</label>
+              <div className="form-group">
+                <label>End Date *</label>
                 <input
                   type="date"
                   value={formData.end_date}
                   onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                   required
-                  style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #ddd', boxSizing: 'border-box' }}
                 />
               </div>
 
               {/* Amount */}
-              <div className="form-group" style={{ marginBottom: 15 }}>
-                <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>Amount ($) *</label>
+              <div className="form-group">
+                <label>Amount ($) *</label>
                 <input
                   type="number"
                   step="0.01"
@@ -572,53 +676,48 @@ export default function AdminSubscriptionsPage() {
                   onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                   placeholder="0.00"
                   required
-                  style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #ddd', boxSizing: 'border-box' }}
                 />
               </div>
 
               {/* Payment Method */}
-              <div className="form-group" style={{ marginBottom: 15 }}>
-                <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>Payment Method</label>
+              <div className="form-group">
+                <label>Payment Method</label>
                 <input
                   value={formData.payment_method}
                   onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
                   placeholder="e.g., Credit Card, Bank Transfer"
-                  style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #ddd', boxSizing: 'border-box' }}
                 />
               </div>
 
               {/* Transaction ID */}
-              <div className="form-group" style={{ marginBottom: 15 }}>
-                <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>Transaction ID</label>
+              <div className="form-group">
+                <label>Transaction ID</label>
                 <input
                   value={formData.transaction_id}
                   onChange={(e) => setFormData({ ...formData, transaction_id: e.target.value })}
                   placeholder="Transaction reference"
-                  style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #ddd', boxSizing: 'border-box' }}
                 />
               </div>
 
               {/* Notes */}
-              <div className="form-group" style={{ marginBottom: 15 }}>
-                <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>Notes</label>
+              <div className="form-group">
+                <label>Notes</label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   placeholder="Additional notes..."
                   rows={3}
-                  style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid #ddd', boxSizing: 'border-box', fontFamily: 'inherit' }}
                 />
               </div>
 
               {/* ACTIONS */}
-              <div className="form-actions" style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
-                <button className="btn-cancel" onClick={() => setShowModal(false)} style={{ padding: '8px 16px', borderRadius: 4, border: '1px solid #ddd', background: '#f8f9fa', cursor: 'pointer' }}>
+              <div className="form-actions">
+                <button className="btn-cancel" onClick={() => setShowModal(false)}>
                   Cancel
                 </button>
                 <button
                   className="btn-save"
                   onClick={editingSubscription ? handleUpdateSubscription : handleCreateSubscription}
-                  style={{ padding: '8px 16px', borderRadius: 4, border: 'none', background: '#007bff', color: 'white', cursor: 'pointer' }}
                 >
                   {editingSubscription ? "Save Changes" : "Create Subscription"}
                 </button>
@@ -630,26 +729,407 @@ export default function AdminSubscriptionsPage() {
 
       {/* STYLES */}
       <style jsx>{`
-        .filters button {
-          padding: 8px 16px;
-          border: 1px solid #ddd;
-          background: white;
-          border-radius: 4px;
-          cursor: pointer;
-          transition: all 0.3s;
+        .dashboard-container {
+          padding: 20px;
+          background: #f5f6fa;
+          min-height: 100vh;
         }
-        .filters button.active {
+
+        .dashboard-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 24px;
+          padding-bottom: 16px;
+          border-bottom: 2px solid #e0e0e0;
+        }
+
+        .dashboard-header h1 {
+          font-size: 28px;
+          font-weight: 600;
+          color: #030213;
+          margin: 0;
+        }
+
+        .header-actions {
+          display: flex;
+          gap: 12px;
+        }
+
+        .btn-add {
+          padding: 10px 20px;
+          background: #007bff;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 500;
+          transition: all 0.2s;
+        }
+
+        .btn-add:hover {
+          background: #0056b3;
+        }
+
+        .tabs {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 24px;
+          border-bottom: 2px solid #e0e0e0;
+          padding-bottom: 0;
+        }
+
+        .tab-btn {
+          padding: 12px 24px;
+          border: none;
+          background: transparent;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 500;
+          color: #666;
+          border-bottom: 3px solid transparent;
+          transition: all 0.2s;
+        }
+
+        .tab-btn:hover {
+          color: #007bff;
+          background: rgba(0, 123, 255, 0.05);
+        }
+
+        .tab-btn.active {
+          color: #007bff;
+          border-bottom-color: #007bff;
+          background: rgba(0, 123, 255, 0.05);
+        }
+
+        .filters {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 20px;
+          flex-wrap: wrap;
+        }
+
+        .btn-filter {
+          padding: 8px 16px;
+          border: 1px solid #d0d5dd;
+          background: white;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 500;
+          color: #344054;
+          transition: all 0.2s;
+        }
+
+        .btn-filter:hover {
+          border-color: #007bff;
+          color: #007bff;
+        }
+
+        .btn-filter.active {
           background: #007bff;
           color: white;
           border-color: #007bff;
         }
+
+        .dashboard-content {
+          background: white;
+          border-radius: 12px;
+          border: 1px solid #e0e0e0;
+          overflow: hidden;
+        }
+
+        .table-container {
+          overflow-x: auto;
+        }
+
+        .dashboard-table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+
+        .dashboard-table th,
+        .dashboard-table td {
+          padding: 16px;
+          text-align: left;
+          border-bottom: 1px solid #e0e0e0;
+        }
+
+        .dashboard-table th {
+          background: #f8f9fa;
+          font-weight: 600;
+          font-size: 13px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          color: #666;
+        }
+
+        .dashboard-table td {
+          font-size: 14px;
+          color: #333;
+        }
+
+        .dashboard-table tr:hover {
+          background: #f8f9fa;
+        }
+
         .expired-row {
           background-color: #fff3cd !important;
         }
-        .status-success { background: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; }
-        .status-danger { background: #f8d7da; color: #721c24; padding: 4px 8px; border-radius: 4px; }
-        .status-warning { background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; }
-        .status-info { background: #d1ecf1; color: #0c5460; padding: 4px 8px; border-radius: 4px; }
+
+        .expired-row:hover {
+          background-color: #ffeaa7 !important;
+        }
+
+        .status-badge {
+          display: inline-block;
+          padding: 4px 10px;
+          border-radius: 20px;
+          font-size: 12px;
+          font-weight: 500;
+        }
+
+        .status-success {
+          background: #d4edda;
+          color: #155724;
+        }
+
+        .status-danger {
+          background: #f8d7da;
+          color: #721c24;
+        }
+
+        .status-warning {
+          background: #fff3cd;
+          color: #856404;
+        }
+
+        .status-info {
+          background: #d1ecf1;
+          color: #0c5460;
+        }
+
+        .actions {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .btn-edit,
+        .btn-save,
+        .btn-delete,
+        .btn-cancel {
+          padding: 6px 12px;
+          border: 1px solid;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 500;
+          transition: all 0.2s;
+        }
+
+        .btn-edit {
+          background: #fff3cd;
+          border-color: #ffeaa7;
+          color: #856404;
+        }
+
+        .btn-edit:hover {
+          background: #ffeaa7;
+        }
+
+        .btn-save {
+          background: #d4edda;
+          border-color: #c3e6cb;
+          color: #155724;
+        }
+
+        .btn-save:hover {
+          background: #c3e6cb;
+        }
+
+        .btn-delete {
+          background: #f8d7da;
+          border-color: #f5c6cb;
+          color: #721c24;
+        }
+
+        .btn-delete:hover {
+          background: #f5c6cb;
+        }
+
+        .btn-cancel {
+          background: #e9ecef;
+          border-color: #dee2e6;
+          color: #495057;
+        }
+
+        .btn-cancel:hover {
+          background: #dee2e6;
+        }
+
+        .no-data {
+          text-align: center;
+          padding: 40px;
+          color: #666;
+          font-size: 14px;
+        }
+
+        .loading {
+          text-align: center;
+          padding: 40px;
+          color: #666;
+          font-size: 14px;
+        }
+
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+        }
+
+        .modal-content {
+          background: white;
+          border-radius: 12px;
+          max-width: 500px;
+          width: 90%;
+          margin: 20px;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 20px 24px;
+          border-bottom: 1px solid #e0e0e0;
+        }
+
+        .modal-header h2 {
+          font-size: 18px;
+          font-weight: 600;
+          color: #030213;
+          margin: 0;
+        }
+
+        .modal-close {
+          background: none;
+          border: none;
+          font-size: 24px;
+          cursor: pointer;
+          color: #999;
+          padding: 0;
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 6px;
+          transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+          background: #f5f5f5;
+          color: #333;
+        }
+
+        .school-form {
+          padding: 24px;
+        }
+
+        .form-group {
+          margin-bottom: 20px;
+        }
+
+        .form-group label {
+          display: block;
+          margin-bottom: 8px;
+          font-weight: 500;
+          font-size: 14px;
+          color: #333;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+          width: 100%;
+          padding: 10px 12px;
+          border: 1px solid #d0d5dd;
+          border-radius: 8px;
+          font-size: 14px;
+          transition: all 0.2s;
+          box-sizing: border-box;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+          outline: none;
+          border-color: #007bff;
+          box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+        }
+
+        .form-group textarea {
+          resize: vertical;
+          min-height: 80px;
+        }
+
+        .form-actions {
+          display: flex;
+          gap: 12px;
+          justify-content: flex-end;
+          margin-top: 24px;
+          padding-top: 20px;
+          border-top: 1px solid #e0e0e0;
+        }
+
+        .toast {
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 20px;
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          z-index: 1001;
+          animation: slideIn 0.3s ease;
+        }
+
+        .toast-close {
+          background: none;
+          border: none;
+          font-size: 20px;
+          cursor: pointer;
+          color: inherit;
+          opacity: 0.6;
+          padding: 0;
+          margin-left: 12px;
+        }
+
+        .toast-close:hover {
+          opacity: 1;
+        }
+
+        @keyframes slideIn {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
       `}</style>
     </div>
   );
